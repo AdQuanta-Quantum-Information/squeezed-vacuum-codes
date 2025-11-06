@@ -479,7 +479,7 @@ def _plot_results(
 
 
 def plot_full_codewords_numeric_figure_x_is_gamma(
-    num_moments : int = 50,
+    num_moments : int = 500,
     num_gammas:int = 5,
     num_code_states:int = 2,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00"

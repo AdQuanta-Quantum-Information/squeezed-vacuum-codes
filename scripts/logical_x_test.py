@@ -11,9 +11,9 @@ if __name__ == "__main__":
     add_root_to_path()
 
 
-from projects.controlled_squeezing.src.visualizations import plot_light_states, plot_fock_distribution
-from projects.controlled_squeezing.src.squeezing_direction import squeezing_direction_to_squeezing_phase
-from projects.controlled_squeezing.src.codes_built_in_superposition import simple_m_legged_code
+from src.visualizations import plot_light_states, plot_fock_distribution
+from src.squeezing_direction import squeezing_direction_to_squeezing_phase
+from src.codes_built_in_superposition import simple_m_legged_code
 
 from src.utils.prints import ProgressBar
 from src.utils.caches import cache
@@ -49,10 +49,10 @@ def logical_x(m:int, num_moments:int) -> Qobj:
 
 @cache(disk=True)
 def compute_diff_norm(m:int, r:float, num_moments:int) -> float:
-    ψ1, ψ2 = simple_m_legged_code(m=m, strength=r, num_moments=num_moments, code_type="squeeze")
+    ψ0, ψ1 = simple_m_legged_code(m=m, strength=r, num_moments=num_moments, code_type="squeeze")
     Xm = logical_x(m=m, num_moments=num_moments)
 
-    diff = ψ2 - Xm@ψ1
+    diff = ψ1 - Xm@ψ0
     diff_norm = diff.norm()
 
     return diff_norm
@@ -69,10 +69,10 @@ def test1(
         norm_vals.append(diff_norm) 
 
     ## Print:
-    plt.plot(r_vals, norm_vals, linewidth=1.5)
+    plt.plot(r_vals, norm_vals, linewidth=4.0)
     plt.ylim(0, max(norm_vals)*1.1)
     plt.xlabel("Squeezing Strength r")
-    plt.ylabel("Norm of Difference || |ψ2> - X_m |ψ1> ||")
+    plt.ylabel("Norm of Difference || |ψ1> - X_m |ψ0> ||")
     plt.show()
 
     ## Stop execution until user accepts

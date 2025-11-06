@@ -47,7 +47,7 @@ def _iterate_state(state:Qobj) -> Generator[tuple[str, Any], None, None]:
                 yield f"{i}", v[0] 
 
 
-def fock_str(state:Qobj|FockSum, prefix:str="", max_terms:int=40) -> str:
+def fock_str(state:Qobj, prefix:str="", max_terms:int=40) -> str:
 
     terms_counter = 0
     s = prefix
@@ -79,7 +79,7 @@ def fock_str(state:Qobj|FockSum, prefix:str="", max_terms:int=40) -> str:
     return s
 
 
-def print_fock(state:Qobj|FockSum, prefix:str="", max_terms:int=40) -> None:
+def print_fock(state:Qobj, prefix:str="", max_terms:int=40) -> None:
     print(fock_str(state, prefix, max_terms))
 
 

@@ -1,5 +1,4 @@
-from __init__ import import_src
-import_src()
+from __init__ import add_root_to_path; add_root_to_path()
 
 ## Get stuff from the general src folder
 from src.quantum.visualizations.wigner_function import plot_plain_wigner

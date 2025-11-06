@@ -1,5 +1,9 @@
+""" This script fails to create multi-legged squeezed state codes using conditional squeezing operations.
+	It is kept here for reference and to strengthen the claims in the paper.
+"""
+
 if __name__ == "__main__":
-	from __init__ import import_src; import_src()
+	from __init__ import add_root_to_path; add_root_to_path()
 
 import numpy as np
 
@@ -22,15 +26,14 @@ from qutip.measurement import measurement_statistics_povm
 
 ## out supporting quantum modules:
 from src.quantum.qutip_support._common import fock_str
-from src.quantum.states.density_matrices.translations import density_matrix_to_pure_state
+from src.quantum.density_matrices.translations import density_matrix_to_pure_state
 from src.utils import tuples, numerics
-from src.quantum.states.bosonic.squeezed import exact_non_displaced_term, FockSum
 
 ## This project:
-from projects.controlled_squeezing.src.squeezing_direction import squeezing_direction_to_squeezing_phase
-from projects.controlled_squeezing.src.measurements import measure_qubit_state, _MeasureStats
-from projects.controlled_squeezing.src.visualizations import plot_light_states
-from projects.controlled_squeezing.src.analytical_expressions import fock_rep_of_squeezed_vacuum_in_direction
+from src.squeezing_direction import squeezing_direction_to_squeezing_phase
+from src.measurements import measure_qubit_state, _MeasureStats
+from src.visualizations import plot_light_states
+from src.analytical_expressions import fock_rep_of_squeezed_vacuum_in_direction
 
 ## Visuals:
 from matplotlib import pyplot as plt
@@ -80,7 +83,7 @@ def conditional_print(is_on:bool, *args, **kwargs) -> None:
 	if not is_on:
 		return
 	for i, arg in enumerate(args):
-		if isinstance(arg, Qobj) or isinstance(arg, FockSum):
+		if isinstance(arg, Qobj):
 			s = fock_str(arg)
 			args = tuples.copy_with_replaced_val_at_index(args, i, s)
 
@@ -137,7 +140,6 @@ def _create_code_states_qutrit(
 
 
 def _create_code_m_legged_code(
-	m:int=2,
 	num_moments: int = DEFAULT_NUM_MOMENTS,
 	strength: float = 1.5,
 	_print: bool = True

@@ -12,8 +12,8 @@ if __name__ == "__main__":
     from __init__ import add_root_to_path; 
     add_root_to_path()
 
-from projects.controlled_squeezing.src.squeezing_direction import squeezing_direction_to_squeezing_phase
-from projects.controlled_squeezing.globals import Globals
+from src.squeezing_direction import squeezing_direction_to_squeezing_phase
+from globals import Globals
 
 from src.utils import assertions
 from src.utils.prints import ProgressBar

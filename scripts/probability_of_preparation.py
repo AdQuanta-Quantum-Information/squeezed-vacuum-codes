@@ -16,19 +16,18 @@ import functools
 
 
 if __name__ == "__main__":
-    from __init__ import add_project_to_path, add_root_to_path
-    # add_project_to_path()
+    from __init__ import add_root_to_path
     path = add_root_to_path()
 
 from src.utils.visuals.matplotlib_support import save_figure, draw_now
 from src.utils.prints import ProgressBar
 
-from projects.controlled_squeezing.src.preparation_circuits import probabilistic_2_legged_code
-from projects.controlled_squeezing.src.visualizations import plot_light_states
+from src.preparation_circuits import probabilistic_2_legged_code
+from src.visualizations import plot_light_states
 
 
 
-NUM_MOMENTS : Final[int] = 1000
+NUM_MOMENTS : Final[int] = 1_000
 
 
 

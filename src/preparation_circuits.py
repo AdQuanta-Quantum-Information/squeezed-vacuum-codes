@@ -19,9 +19,9 @@ if __name__ == "__main__":
     from __init__ import add_root_to_path
     add_root_to_path()
 
-from projects.controlled_squeezing.src.squeezing_direction import squeezing_direction_to_squeezing_phase
-from projects.controlled_squeezing.src.measurements import _MeasureStats, measure_qubit_state
-from projects.controlled_squeezing.src.visualizations import plot_light_states
+from src.squeezing_direction import squeezing_direction_to_squeezing_phase
+from src.measurements import _MeasureStats, measure_qubit_state
+from src.visualizations import plot_light_states
 from src.utils.prints import ProgressBar
 
 

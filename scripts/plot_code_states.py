@@ -7,9 +7,6 @@ if __name__ == "__main__":
 
 
 
-from src.quantum.states.bosonic.codes.squid import squid_state, squid_code
-from src.quantum.states.bosonic.codes.cat import cat_code
-from src.quantum.states.fock import FockSum
 from qutip import Qobj, basis, coherent, squeeze, qzero
 
 from src.quantum.visualizations.wigner_function import plot_plain_wigner, qutip_wigner_plot
@@ -19,9 +16,9 @@ from src.utils.visuals.matplotlib_support import Axes
 
 from src.quantum.qutip_support._common import print_fock
 
-from projects.controlled_squeezing.src.visualizations import plot_light_states, plot_fock_distribution
-from projects.controlled_squeezing.src.squeezing_direction import squeezing_direction_to_squeezing_phase
-from projects.controlled_squeezing.src.codes_built_in_superposition import simple_m_legged_code
+from src.visualizations import plot_light_states, plot_fock_distribution
+from src.squeezing_direction import squeezing_direction_to_squeezing_phase
+from src.codes_built_in_superposition import simple_m_legged_code
 
 
 

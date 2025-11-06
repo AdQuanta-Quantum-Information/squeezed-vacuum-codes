@@ -10,18 +10,18 @@ from sympy.physics import quantum
 
 
 if __name__ == "__main__":
-	from __init__ import import_src; import_src()
+	from __init__ import add_root_to_path; add_root_to_path()
 
 ## out supporting quantum modules:
 from src.utils import assertions
 
 ## This project:
-from projects.controlled_squeezing.src.squeezing_direction import squeezing_direction_to_squeezing_phase
-from projects.controlled_squeezing.src.codes_built_in_superposition import simple_m_legged_code
-from projects.controlled_squeezing.src.measurements import measure_qubit_state, _MeasureStats
-from projects.controlled_squeezing.src.visualizations import plot_light_states
-from projects.controlled_squeezing.src.analytical_expressions import fock_rep_of_squeezed_vacuum_in_direction
-from projects.controlled_squeezing.src.rotation import rotation
+from src.squeezing_direction import squeezing_direction_to_squeezing_phase
+from src.codes_built_in_superposition import simple_m_legged_code
+from src.measurements import measure_qubit_state, _MeasureStats
+from src.visualizations import plot_light_states
+from src.analytical_expressions import fock_rep_of_squeezed_vacuum_in_direction
+from src.rotation import rotation
 
 ## Visuals:
 from matplotlib import pyplot as plt
