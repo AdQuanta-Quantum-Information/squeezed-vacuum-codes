@@ -12,20 +12,19 @@ import matplotlib.patches as mpatches
 from typing import Literal 
 from typing import cast as type_cast
 
-from soupsieve import match 
 
 if __name__ == "__main__":
-    from __init__ import add_project_to_path, add_root_to_path
+    from __init__ import add_root_to_path
     path = add_root_to_path()
 
 from src.utils.visuals.matplotlib_support import save_figure, draw_now
 from src.utils.visuals.colors import color_shades, _RgbFloatTuple
 from src.utils.prints import ProgressBar
 
-from projects.controlled_squeezing.src.cost_functions import compute_cost_on_logical_codewords
-from projects.controlled_squeezing.src.cost_functions import CodeTypeLiteral, MeasurementTypeLiteral, NoiseOptionLiteral, BosonicNoiseType, CostPerNoiseDict, CostPerLegsPerNoiseDict
+from src.cost_functions import compute_cost_on_logical_codewords
+from src.cost_functions import CodeTypeLiteral, MeasurementTypeLiteral, NoiseOptionLiteral, BosonicNoiseType, CostPerNoiseDict, CostPerLegsPerNoiseDict
 
-from projects.controlled_squeezing.globals import Globals
+from globals import Globals
 
 if Globals.LaTeX_RENDERING:
     plt.rcParams['text.usetex'] = True
@@ -480,7 +479,7 @@ def _plot_results(
 
 
 def plot_full_codewords_numeric_figure_x_is_gamma(
-    num_moments : int = 500,
+    num_moments : int = 50,
     num_gammas:int = 5,
     num_code_states:int = 2,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00"

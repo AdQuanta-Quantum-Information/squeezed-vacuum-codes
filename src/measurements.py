@@ -6,7 +6,7 @@ import numpy as np
 from typing import Literal, overload, TypedDict, List, TypeVar
 
 from src.utils.binary import binary_tuples_generator
-from src.quantum.states.density_matrices.translations import density_matrix_to_pure_state
+from src.quantum.density_matrices.translations import density_matrix_to_pure_state
 
 
 

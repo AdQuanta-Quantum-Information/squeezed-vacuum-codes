@@ -37,16 +37,16 @@ from src.utils.files import saveload
 from src.utils.maths import factorial, sqrt_factorial, power_computed_in_log_space
 from src.utils.caches import cache
 
-from projects.controlled_squeezing.src.squeezing_code import SqueezingCode
-from projects.controlled_squeezing.src.visualizations import plot_light_states, plot_fock_distribution
-from projects.controlled_squeezing.src.codes_built_in_superposition import simple_m_legged_code, simple_m_legged_state, _CodeTypes
-from projects.controlled_squeezing.src.noise import noise_simulation, BosonicNoiseType, test_effect_of_time_resolution
-from projects.controlled_squeezing.src.metrics import compute_cross_overlap_mat
-from projects.controlled_squeezing.src.bosonic_operators import get_operator
-from projects.controlled_squeezing.globals import Globals
-from projects.controlled_squeezing.src.mean_photon_number import find_parameter_for_target_mean_photon_number
-from projects.controlled_squeezing.src.kraus_maps import kraus_operators_series, kraus_operator_j, _check_kraus_series_completeness, _assert_correct_kraus_ops, _derive_num_kraus_operators
-from projects.controlled_squeezing.src.kraus_maps import KRAUS_COST_THRESHOLD, KRAUS_TOO_SMALL_STREAK_SIZE, KrausTruncationError
+from src.squeezing_code import SqueezingCode
+from src.visualizations import plot_light_states, plot_fock_distribution
+from src.codes_built_in_superposition import simple_m_legged_code, simple_m_legged_state, _CodeTypes
+from src.noise import noise_simulation, BosonicNoiseType, test_effect_of_time_resolution
+from src.metrics import compute_cross_overlap_mat
+from src.bosonic_operators import get_operator
+from globals import Globals
+from src.mean_photon_number import find_parameter_for_target_mean_photon_number
+from src.kraus_maps import kraus_operators_series, kraus_operator_j, _check_kraus_series_completeness, _assert_correct_kraus_ops, _derive_num_kraus_operators
+from src.kraus_maps import KRAUS_COST_THRESHOLD, KRAUS_TOO_SMALL_STREAK_SIZE, KrausTruncationError
 
 
 
@@ -401,7 +401,7 @@ def _get_parameters_from_fixed_and_x(
     return r, γ  #type: ignore
 
 
-def _costs_matrix_from_overlap_matrices(overlap_matrices:NDArray[np.object_], measurement:MeasurementTypeLiteral) -> NDArray[np.float_]:
+def _costs_matrix_from_overlap_matrices(overlap_matrices:NDArray[np.object_], measurement:MeasurementTypeLiteral) -> NDArray[np.float64]:
     num_ops = overlap_matrices.shape[0]
     overlap_matrices_iter = np.nditer(overlap_matrices, flags=["refs_ok", "multi_index"])
     costs_matrix : NDArray[np.float_] = np.full((num_ops, num_ops), np.nan, dtype=float)
@@ -480,7 +480,7 @@ def compute_cost_on_logical_codewords(
     return costs_for_all_m
 
 
-def _plot_costs_matrix(costs_matrix:NDArray[np.float_]) -> None:
+def _plot_costs_matrix(costs_matrix:NDArray[np.float64]) -> None:
     plt.figure(figsize=(6,4))
     
     # Mask NaN values

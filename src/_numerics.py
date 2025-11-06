@@ -1,4 +1,4 @@
-from projects.controlled_squeezing.globals import Globals
+from globals import Globals
 
 
 import numpy as np

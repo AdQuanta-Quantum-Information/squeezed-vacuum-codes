@@ -11,8 +11,8 @@ if __name__ == "__main__":
 ## Get stuff from the general src folder
 from src.quantum.visualizations.wigner_function import plot_plain_wigner
 from src.utils.visuals import matplotlib_support
-from projects.controlled_squeezing.globals import Globals
-from projects.controlled_squeezing.src._numerics import π, exp
+from globals import Globals
+from src._numerics import π, exp
 
 
 @overload

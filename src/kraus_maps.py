@@ -32,10 +32,10 @@ from src.utils.maths import factorial, sqrt_factorial, power_computed_in_log_spa
 from src.utils.caches import cache
 
 
-from projects.controlled_squeezing.src.noise import BosonicNoiseType
-from projects.controlled_squeezing.src.bosonic_operators import get_operator
-from projects.controlled_squeezing.globals import Globals
-from projects.controlled_squeezing.src._numerics import exp, log, sqrt, π
+from src.noise import BosonicNoiseType
+from src.bosonic_operators import get_operator
+from globals import Globals
+from src._numerics import exp, log, sqrt, π
 
 
 if Globals.PRECISE:

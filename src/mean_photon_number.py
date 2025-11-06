@@ -23,10 +23,10 @@ from src.utils.searches import binary_search_callable_increasing, DEFAULT_TOL
 from src.utils.caches import cache
 from src.utils import assertions
 
-from projects.controlled_squeezing.src.visualizations import plot_light_states, plot_fock_distribution
-from projects.controlled_squeezing.src.codes_built_in_superposition import simple_m_legged_code, simple_m_legged_state, _CodeTypes
-from projects.controlled_squeezing.globals import Globals
-from projects.controlled_squeezing.src import bosonic_operators
+from src.visualizations import plot_light_states, plot_fock_distribution
+from src.codes_built_in_superposition import simple_m_legged_code, simple_m_legged_state, _CodeTypes
+from globals import Globals
+from src import bosonic_operators
 
 
 NUM_MOMENTS : Final[int] = 100

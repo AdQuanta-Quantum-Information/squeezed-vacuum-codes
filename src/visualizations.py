@@ -17,9 +17,9 @@ if __name__ == "__main__":
 from src.utils.visuals import matplotlib_support
 from src.quantum.visualizations.wigner_function import plot_plain_wigner 
 
-from projects.controlled_squeezing.src.measurements import measure_qubit_state, _MeasureStats
+from src.measurements import measure_qubit_state, _MeasureStats
 
-from projects.controlled_squeezing.globals import Globals
+from globals import Globals
 
 
 class VisualizationResDict(TypedDict):

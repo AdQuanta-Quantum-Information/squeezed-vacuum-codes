@@ -13,9 +13,9 @@ if __name__ == "__main__":
 from src.utils.numerics import force_near_pure_complex
 from src.utils.prints import ProgressBar
 
-from projects.controlled_squeezing.src.squeezing_direction import squeezing_direction_to_squeezing_phase
-from projects.controlled_squeezing.globals import Globals
-from projects.controlled_squeezing.src._numerics import π, exp
+from src.squeezing_direction import squeezing_direction_to_squeezing_phase
+from globals import Globals
+from src._numerics import π, exp
 
 
 
