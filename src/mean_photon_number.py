@@ -1,0 +1,645 @@
+import numpy as np
+from qutip import Qobj, basis, expect
+
+import sympy as sp
+from sympy import lambdify
+
+from scipy.optimize import minimize
+
+from typing import Final, Literal, Iterable, Callable, cast
+from collections import deque
+
+import time
+
+
+if __name__ == "__main__":
+    from __init__ import add_project_to_path, add_root_to_path
+    # add_project_to_path()
+    path = add_root_to_path()
+
+from src.utils.maths import factorial
+from src.utils.prints import ProgressBar
+from src.utils.searches import binary_search_callable_increasing, DEFAULT_TOL
+from src.utils.caches import cache
+from src.utils import assertions
+
+from src.visualizations import plot_light_states, plot_fock_distribution
+from src.codes_built_in_superposition import simple_m_legged_code, simple_m_legged_state, _CodeTypes
+from globals import Globals
+from src import bosonic_operators
+
+
+NUM_MOMENTS : Final[int] = 100
+DEFAULT_L_CUT_OFF : Final[int] = 1_000
+DEFAULT_UPPER_BOUND_FOR_SEARCH : Final[float] = 2.5
+
+r_symbol = sp.symbols('r')
+L_symbol = sp.symbols('L')
+alpha_symbol = sp.symbols('α') 
+
+
+i = sp.I
+π = sp.pi
+
+
+
+def _number_projector(n: int, dim: int) -> Qobj:
+    """Create the number projector |n><n| for a bosonic mode of given dimension.
+
+    Args:
+        n (int): The photon number.
+        dim (int): The dimension of the bosonic mode.
+
+    Returns:
+        Qobj: The number projector |n><n|.
+    """
+    ket = basis(dim, n)
+    return ket * ket.dag()
+
+
+
+def qutip_mean_photon_number(state:Qobj) -> float:
+    """Calculate the mean photon number for a single-mode bosonic state.
+
+    Args:
+        state (Qobj): The quantum state.
+
+    Returns:
+        float: The mean photon number.
+    """
+
+    N = state.dims[0][0]  # Dimension of the bosonic mode
+
+    ## Method 1: Using number operator directly
+    n = bosonic_operators.num(N)
+    mean_photon_number1 = expect(n, state)
+    mean_photon_number1 = float(mean_photon_number1)  #type: ignore
+
+    if Globals.DEBUG:
+        ## Method 2: Using number sum of probabilities per Fock state:
+        # Create list of projection operators
+        projectors = [_number_projector(n, N) for n in range(N)]
+        # Calculate all expectations at once
+        probs : np.ndarray = expect(projectors, state)  #type: ignore
+        # Calculate mean photon number by weighted sum of probabilities
+        mean_photon_number2 = sum(n * prob for n, prob in enumerate(probs))
+
+        assert np.isclose(mean_photon_number1, mean_photon_number2), f"Mean photon number calculations do not match: {mean_photon_number1} vs {mean_photon_number2}"
+
+    return mean_photon_number1
+
+
+def _common_a_lk_factor(n:int) -> sp.Expr:
+    return sp.factorial(2*n) / (
+        (4**n) * (sp.factorial(n)**2)
+    ) * sp.tanh(r_symbol)**(2*n)
+
+
+def _analytic_mean_photon_number_for_squeezed_k_state(m:int, k:int, L_threshold:Literal[False]|int=False) -> sp.Expr:
+    l_symbol = sp.symbols('l', integer=True)
+
+    k_star = (-k) % m
+    
+    # Define n in terms of l
+    n_expr = l_symbol * m + k_star
+    a_kl_expr = _common_a_lk_factor(n_expr)
+    
+    # Create symbolic sums
+    numerator = sp.Sum( 2 * n_expr * a_kl_expr, (l_symbol, 0, L_symbol))
+    denominator = sp.Sum(a_kl_expr, (l_symbol, 0, L_symbol))
+
+    result : sp.Expr = numerator / denominator  #type: ignore
+
+    if L_threshold is not False:
+        assert isinstance(L_threshold, int)
+        result = result.subs({L_symbol: L_threshold})  #type: ignore
+
+    return result
+
+
+def _analytic_mean_photon_number_for_cat_k_state(m:int, k:int) -> sp.Expr:
+    d_symbol = sp.symbols('d', integer=True)
+    
+    abs_alpha_square = abs(alpha_symbol)**2
+
+    # Define ω 
+    ω = sp.exp(i * 2 * π / m)
+    exponent = sp.exp(
+        -abs_alpha_square * (1 - ω**d_symbol)
+    )
+
+    def sum_expression(k_:int) -> sp.Sum:
+        return sp.Sum(ω**(k_*d_symbol)*exponent, (d_symbol, 0, m-1))  #type: ignore
+    
+    return abs_alpha_square * sum_expression(k+1) / sum_expression(k)
+
+
+def _solve_equation_with_optimization_tools(
+    func:Callable[[float], float],  
+    target_value:float,
+    practical_upper_bounds:float=DEFAULT_UPPER_BOUND_FOR_SEARCH
+) -> float:
+
+    x_bounds = (0.0, practical_upper_bounds)
+
+    ## First try with a simple binary search, else, use scipy minimization:
+    x_solution, y_solution = binary_search_callable_increasing(func, target_value, x_bounds)
+
+    assert np.isclose(y_solution, target_value, atol=1e-6)
+
+    return x_solution
+
+
+def k_from_logical_value(m:int, logical_value:int) -> int:
+    assertions.even(m)
+
+    if logical_value == 0:
+        k = 0
+    elif logical_value == 1:
+        k = m // 2
+    else:
+        raise ValueError("L must be 0 or 1.")
+    
+    return k
+
+def _strip_imaginary_part_from_symbolic_expr_if_close_to_real(numerical_value:sp.Expr) -> sp.Expr:
+    if isinstance(numerical_value, (int, float, complex, np.floating, np.integer)):
+        type_ = "native"
+    elif isinstance(numerical_value, sp.Expr):
+        type_ = "sympy"
+    else:
+        raise TypeError(f"Unsupported type for numerical_value: {type(numerical_value)!r}")
+
+    if type_ == "native":
+        is_real = np.isrealobj(numerical_value)
+    elif type_ == "sympy":
+        is_real = numerical_value.is_real
+    else:
+        raise RuntimeError("Unreachable code.")
+
+    if is_real:
+        return numerical_value
+
+    if type_ == "native":
+        imaginary_part = np.imag(numerical_value)
+    elif type_ == "sympy":
+        imaginary_part = float(sp.im(numerical_value)) 
+        
+
+    assert np.isclose(imaginary_part, 0), f"Mean photon number has non-negligible imaginary part: {imaginary_part}"
+
+    if type_ == "native":
+        numerical_value = np.real(numerical_value)
+    elif type_ == "sympy":
+        numerical_value = sp.re(numerical_value)
+
+    return numerical_value
+
+
+def _numerical_exact_summation_mean_photon_number_for_squeezed_codeword(m:int, r:float, k:int, L_cut_off:int) -> float:
+    ## Checks:
+    assert L_cut_off > 0
+    assert m > 0
+    assert 0 <= k < m
+
+    k_star = (-k) % m
+    res_tol = DEFAULT_TOL * 1e-3  # Be even more strict than the search tolerance
+  
+
+    numerator = 0.0
+    denominator = 0.0
+
+    last_result = 0.0
+    result = 0.0  # place holder
+    diff = float('inf')
+    diffs = deque(maxlen=5)  # Keep only the last 5 differences
+
+    def _check_convergence(l:int) -> bool:
+        if l < 10:
+            return False
+        if len(diffs) < diffs.maxlen:  #type: ignore
+            return False
+        if _all_close_to_zero_in_list(list(diffs), tol=res_tol):
+            return True
+        return False
+
+
+    for l in ProgressBar.range(L_cut_off + 1, prefix="l values: ", print_length=100):
+        ProgressBar.newest().append_extra_str(f" diff={diff}")
+        n = l * m + k_star
+        n = int(n)
+        a_kl = factorial(2*n) / (
+            (4**n) * (factorial(n)**2)
+        ) * np.tanh(r)**(2*n)
+        
+        # Create symbolic sums
+        numerator   +=  2 * n * a_kl
+        denominator += a_kl
+
+
+        result = numerator / denominator
+
+        diff = abs(result - last_result)
+        diffs.append(diff)
+
+        if _check_convergence(l):
+            break
+
+        last_result = result
+
+
+    if False == "False":
+        from matplotlib import pyplot as plt
+        plt.plot(range(len(results)), results, label="Numerator")
+        plt.xlabel("l")
+        plt.ylabel("Value")
+        plt.title("Convergence")
+
+    return result
+
+def mean_photon_number_for_cat_codeword(m:int, alpha:float, logical_value:int, analytic_substitution:bool=True) -> float:
+    k = k_from_logical_value(m, logical_value)
+    analytical_expression = _analytic_mean_photon_number_for_cat_k_state(m, k)
+    numerical_value = analytical_expression.subs({alpha_symbol:alpha}).evalf().doit()
+    numerical_value = _strip_imaginary_part_from_symbolic_expr_if_close_to_real(numerical_value)    
+
+    return float(numerical_value)
+
+
+def mean_photon_number_for_squeezed_codeword(m:int, r:float, logical_value:int, analytic_substitution:bool=True, L_cut_off:int=DEFAULT_L_CUT_OFF, _k:int|None=None) -> float:
+    ## Ignore logical value and use k if provided:
+    if _k is not None:
+        k = _k
+    else:
+        k = k_from_logical_value(m, logical_value)
+
+    if analytic_substitution:
+        analytical_expression = _analytic_mean_photon_number_for_squeezed_k_state(m, k)
+        numerical_value = analytical_expression.subs({r_symbol:r, L_symbol:L_cut_off}).evalf().doit()
+        return float(numerical_value)
+    
+    else: 
+        return _numerical_exact_summation_mean_photon_number_for_squeezed_codeword(m, r, k, L_cut_off)
+
+
+@cache(ram=True, disk=True)
+def find_parameter_for_target_mean_photon_number(
+    code_type:Literal['cat', 'squeeze'],
+    m:int,
+    logical_value:int,
+    target_mean_photon_number:float,
+) -> float:
+
+    mean_photon_number_func = get_single_input_function_from_symbolic_expression(
+        code_type=code_type,
+        m=m,
+        logical_value=logical_value
+    )
+
+    return _solve_equation_with_optimization_tools(
+        mean_photon_number_func,
+        target_mean_photon_number
+    )
+
+
+def get_single_input_function_from_symbolic_expression(
+    code_type:Literal['cat', 'squeeze'],        
+    m:int,
+    logical_value:int
+) -> Callable[[float], float]:
+
+
+    def mean_photon_number_func(param: float) -> float:
+        return get_mean_photon_number(
+            code_type=code_type,
+            m=m,
+            logical_value=logical_value,
+            parameter=param,
+            analytic_substitution=False
+        )
+    
+    return mean_photon_number_func
+
+
+def get_mean_photon_number(
+    code_type:Literal['cat', 'squeeze'],        
+    m:int,
+    logical_value:int,
+    parameter:float,
+    analytic_substitution:bool=True,
+    cut_off:int = DEFAULT_L_CUT_OFF 
+) -> float:
+    match code_type:
+        case 'cat':
+            return mean_photon_number_for_cat_codeword(m, parameter, logical_value, analytic_substitution=analytic_substitution)
+        case 'squeeze':
+            return mean_photon_number_for_squeezed_codeword(m, parameter, logical_value, analytic_substitution=analytic_substitution, L_cut_off=cut_off)
+        case _:
+            raise ValueError(f"Unknown code type: {code_type!r}")
+
+
+def _all_close_to_zero_in_list(list_:list[float], tol:float=1e-6) -> bool:
+    first_val = list_[0]
+    for val in list_[1:]:
+        if not np.isclose(0.0, val, atol=tol):
+            return False
+    return True
+
+
+
+def _test1():
+    state_1 = basis(NUM_MOMENTS, 3)  # Fock state |3>
+    state_2 = (basis(NUM_MOMENTS, 2) + basis(NUM_MOMENTS, 4)).unit()  # Superposition state (|2> + |4>)/sqrt(2)
+
+    mean_photon_number_1 = qutip_mean_photon_number(state_1)
+    mean_photon_number_2 = qutip_mean_photon_number(state_2)
+
+    assert np.isclose(mean_photon_number_1, mean_photon_number_2)
+    assert np.isclose(mean_photon_number_1, 3)
+
+    # print(f"Mean photon number of (|2> + |4>)/sqrt(2) == |3> == {mean_photon_number_2}")
+
+
+
+def _test2_squeezed_codes(
+    r_vals = np.linspace(0.0, 6, 50).tolist(),
+    m: int = 2,
+    analytic_substitution: bool = False
+):
+    
+    from matplotlib import pyplot as plt
+
+    fig = plt.figure()
+    
+
+    for k in ProgressBar.range(m, prefix="per k: "):
+
+        qutip_vals = []
+        analytic_vals = []
+
+        for r in ProgressBar(r_vals, prefix="per r: "):
+            ProgressBar.newest().append_extra_str(f" r={r:.3f}")
+
+            qutip_state = simple_m_legged_state(m, r, num_moments=NUM_MOMENTS, code_type='squeeze', 
+                                        qubit_logical_value=k,
+                                        num_qudit_values=m)
+                
+            qutip_mean_photons = qutip_mean_photon_number(qutip_state)
+            qutip_vals.append(qutip_mean_photons)
+
+            if analytic_substitution:
+                analytical_expression = _analytic_mean_photon_number_for_squeezed_k_state(m, k)
+                analytical_mean_photons = analytical_expression.subs({r_symbol:r, L_symbol:DEFAULT_L_CUT_OFF}).evalf().doit()
+                analytical_mean_photons = float(analytical_mean_photons)
+            else:
+                if r < 2.0:
+                    L_cut_off = DEFAULT_L_CUT_OFF
+                elif r < 4.0:
+                    L_cut_off = 10_000
+                elif r < 6.0:
+                    L_cut_off = 100_000
+                else:
+                    L_cut_off = 1_000_000
+                analytical_mean_photons = mean_photon_number_for_squeezed_codeword(
+                    m, r, logical_value=-1, analytic_substitution=False, _k=k, L_cut_off=L_cut_off
+                )
+
+            analytic_vals.append(analytical_mean_photons)
+
+        ## Plot:
+        line = plt.plot(r_vals, qutip_vals, label=f"k={k}", marker='o', linestyle='None')
+        plt.plot(r_vals, analytic_vals, linestyle='--', color=line[0].get_color())
+        plt.show()
+        plt.pause(0.1)
+
+    plt.xlabel("Squeezing Parameter r")
+    plt.ylabel("Mean Photon Number")
+    plt.title(f"Mean Photon Number vs Squeezing Parameter for m={m}\n")
+    plt.legend()
+    plt.show()
+
+    print("Test 2 completed.")
+
+
+def _test3_infinite_vs_finite_series(
+    m:int = 2,
+    logical_value: int = 0,
+    r:float = 2.5,
+    with_infinity:bool = False,
+    with_analytic_substitution:bool = False
+):
+    from matplotlib import pyplot as plt
+
+
+    k = k_from_logical_value(m, logical_value)
+    analytical_expression = _analytic_mean_photon_number_for_squeezed_k_state(m, k)
+    
+    def _get_series(L) -> sp.Expr:
+        series = analytical_expression.subs({L_symbol : L})
+        return series
+        
+    def _get_val(series:sp.Expr) -> float:
+        val = series.subs({r_symbol : r}).evalf().doit()
+        return float(val)
+    
+    def get_numerical_mean(L:int) -> float:
+        return get_mean_photon_number("squeeze", m, logical_value, r, analytic_substitution=False, cut_off=L)
+
+    ## Try to sum to infinity:
+    if with_infinity:
+        inf_series = _get_series(sp.oo)
+        inf_value = _get_val(inf_series)
+
+    ## Sum to a predefined L values: 
+    values_from_analytical = []
+    values_from_exact_numerical:list[float] = []
+    times = []
+
+    Ls = np.linspace(1, 1e3, num=20).tolist()
+    for L in ProgressBar(Ls, prefix="L values: ", print_length=100):
+        L = int(L)
+        ProgressBar.newest().append_extra_str(f" (L={L})")
+
+        t0 = time.perf_counter()
+        if with_analytic_substitution:
+            num_series = _get_series(L)
+            from_analytic_value = _get_val(num_series)
+            values_from_analytical.append(from_analytic_value)
+
+        numerical_value = get_numerical_mean(L)
+        t1 = time.perf_counter()
+
+        values_from_exact_numerical.append(numerical_value)
+        times.append(t1 - t0)
+
+    ## Qutip calculation for comparison:
+    state = simple_m_legged_state(m, r, num_moments=NUM_MOMENTS, code_type='squeeze', 
+                                  qubit_logical_value=logical_value)
+    qutip_value = qutip_mean_photon_number(state)
+
+    ## Plot comparison:
+    if with_analytic_substitution:
+        plt.semilogx(Ls, values_from_analytical, label="from Analytic", marker='o')
+    if with_infinity:
+        plt.axhline(inf_value, color='r', linestyle='--', label="Sum to Infinity")
+    plt.axhline(qutip_value, color='g', linestyle='--', label="Qutip Value")
+    plt.semilogx(Ls, values_from_exact_numerical, color='magenta', linestyle='', label="from Exact Numerical", marker='x')
+    plt.xlabel("L")
+    plt.ylabel("Mean Photon Number")
+    plt.title(f"Mean Photon Number vs L for m={m}, logical value={logical_value}, r={r}")
+    plt.show()
+
+    ## Twin axis for time:
+    ax2 = plt.gca().twinx()
+    ax2.plot(Ls, times, color='yellow', label="Computation Time", marker='', linestyle='--')
+
+    plt.legend()
+
+    print("Test 3 completed.")
+
+
+
+def _test4_cat_state(
+    m:int = 2,
+    alpha_vals:list[float] = np.linspace(0.01, 2.5, 15).tolist(),
+    num_moments:int = NUM_MOMENTS
+):
+    from matplotlib import pyplot as plt
+    
+    fig, ax = plt.subplots()    
+
+    ax.set_xlabel("Displacement Parameter α")
+    ax.set_ylabel("Mean Photon Number")
+    ax.set_title(f"Mean Photon Number vs Displacement Parameter for m={m}\n")   
+  
+    simplified = [abs(alpha)**2 for alpha in alpha_vals]
+    plt.plot(alpha_vals, simplified, marker='None', color="black", alpha=0.8, linestyle='-', label="|α|²")
+                    
+    for k in ProgressBar.range(m, prefix="per k: "):
+
+        qutip_vals = []
+        analytical = []
+
+        for alpha in ProgressBar(alpha_vals, prefix="per α: "):
+            state = simple_m_legged_state(m, alpha, num_moments=num_moments, code_type='cat', 
+                                        qubit_logical_value=k,
+                                        num_qudit_values=m)
+            
+            _qutip_mean_photons = qutip_mean_photon_number(state)
+            
+            analytical_expression = _analytic_mean_photon_number_for_cat_k_state(m, k)
+            analytical_photon_number = analytical_expression.subs({alpha_symbol:alpha}).evalf().doit()
+            analytical_photon_number = _strip_imaginary_part_from_symbolic_expr_if_close_to_real(analytical_photon_number)
+            analytical_photon_number = float(analytical_photon_number)
+
+            ## Append to lists:
+            analytical.append(analytical_photon_number)
+            qutip_vals.append(_qutip_mean_photons)
+
+        ## Plot:
+        line = plt.plot(alpha_vals, qutip_vals, label=f"k={k}", marker='o', linestyle='None')
+        color = line[0].get_color()
+        plt.plot(alpha_vals, analytical, marker='None', color=color, linestyle='--')
+
+        ax.legend()
+        plt.show()
+        plt.pause(0.1)
+
+    plt.show()
+    plt.pause(0.1)
+    print("Done.")
+
+
+def _test5_get_parameter_for_given_mean_photons(
+    target_mean_photons = 3.0,
+    logical_value = 0    
+):
+
+    results = []
+
+    for m in ProgressBar([2, 4, 6] ,prefix="per m: "):
+        for code_type in ['squeeze', 'cat']:
+            code_type = cast(Literal['squeeze', 'cat'], code_type)
+
+            parameter = find_parameter_for_target_mean_photon_number(
+                code_type=code_type,
+                m=m,
+                logical_value=logical_value,
+                target_mean_photon_number=target_mean_photons,
+            )
+
+            computed_mean_photons = get_mean_photon_number(
+                code_type=code_type,
+                m=m,
+                logical_value=logical_value,
+                parameter=parameter,
+                analytic_substitution=False 
+            )
+
+            assert np.isclose(computed_mean_photons, target_mean_photons, atol=1e-6)
+
+            results.append( (code_type, m, parameter, computed_mean_photons) )
+        
+    for res in results:
+        code_type, m, parameter, computed_mean_photons = res
+        print(f"Code Type: {code_type:<8}: m={m}, Parameter={parameter:.6f} => Mean Photons={computed_mean_photons:.6f}")
+
+    print("Done.")
+
+
+def _test6_plot_mean_photons_params_for_different_codes(
+    m:int = 2,
+    logical_value:int = 0,
+    target_mean_photon_numbers:list[float] = np.linspace(0.01, 5.01, 21).tolist()
+) -> None:
+    
+    from matplotlib import pyplot as plt    
+
+    cat = []
+    squeeze = []
+
+    lists = dict(
+        cat=cat,
+        squeeze=squeeze
+    )
+
+    for target_mean_photon_number in ProgressBar(target_mean_photon_numbers, prefix="per target mean photons: "):
+        for code_type in ProgressBar(['squeeze', 'cat'], prefix="per code type: "):
+
+            code_type = cast(Literal['squeeze', 'cat'], code_type)
+
+            parameter = find_parameter_for_target_mean_photon_number(
+                code_type=code_type,
+                m=m,
+                logical_value=logical_value,
+                target_mean_photon_number=target_mean_photon_number,
+            )
+
+            lists[code_type].append(parameter)
+
+    ## Plot:
+    linewidth = 3.0
+    plt.figure(figsize=(10, 6))
+    for code_type, params in lists.items():
+        plt.plot(target_mean_photon_numbers, params, label=code_type, linewidth=linewidth)
+    plt.xlabel("Target Mean Photon Number")
+    plt.ylabel("Parameter")
+    plt.title("Mean Photon Number Parameters for Different Codes")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+    print("Done.")
+
+    
+
+if __name__ == "__main__":
+    # _test1()
+    _test2_squeezed_codes()
+    # _test3_infinite_vs_finite_series()
+    # _test4_cat_state()
+    # _test5_get_parameter_for_given_mean_photons()
+    # _test6_plot_mean_photons_params_for_different_codes()
+
+    print("Done.")
+
