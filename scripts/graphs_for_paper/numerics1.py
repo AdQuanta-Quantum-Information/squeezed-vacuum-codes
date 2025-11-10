@@ -340,7 +340,7 @@ def _extend_axis_without_grid(ax: Axes, extension_factor: float = 0.2) -> None:
 def _plot_results(
     # Mandatory inputs:
     per_code_results: dict[CodeTypeLiteral, CostPerLegsPerNoiseDict],
-    x_vec_name: Literal["γ", "gamma", "r"],
+    x_vec_name: Literal["γ", "gamma", "r", "num_photons"],
     x_vec: list[float],
     measurement: MeasurementTypeLiteral,
     noise_method : NoiseOptionLiteral,
@@ -529,9 +529,9 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
 
 
 def plot_full_codewords_numeric_figure_x_is_r(
-    num_moments : int = 200,
+    num_moments : int = 300,
     num_photon_num: int = 21,
-    max_photon_num: float = 10.0,
+    max_photon_num: float = 5.0,
     num_code_states:int = 3,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00", "fidelity01", "fidelity00"
     noise_method : NoiseOptionLiteral = "kraus-KL-style",  # "simulated", "kraus" "kraus-channel"
@@ -539,9 +539,8 @@ def plot_full_codewords_numeric_figure_x_is_r(
 ) -> None:
     
     ## ========= Inputs =========:
-    x_vec_name = "r"
+    x_vec_name = "num_photons"
     photon_num_vec = np.linspace(1e-3, max_photon_num, num_photon_num).tolist()
-    # r_vec = r_vec[:-4]
 
 
     ## ========= Compute =========:
@@ -578,5 +577,5 @@ def plot_full_codewords_numeric_figure_x_is_r(
 
 
 if __name__ == "__main__":
-    plot_full_codewords_numeric_figure_x_is_gamma()
-    # plot_full_codewords_numeric_figure_x_is_r()
+    # plot_full_codewords_numeric_figure_x_is_gamma()
+    plot_full_codewords_numeric_figure_x_is_r()

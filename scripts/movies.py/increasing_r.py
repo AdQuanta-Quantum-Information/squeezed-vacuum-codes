@@ -18,9 +18,9 @@ from src.utils.visuals.matplotlib_support import save_figure, draw_now, clean_fi
 from src.utils.visuals.videos import VideoRecorder
 from src.utils.prints import ProgressBar
 
-from projects.controlled_squeezing.src.codes_built_in_superposition import simple_m_legged_code
-from projects.controlled_squeezing.src.visualizations import plot_light_states
-from projects.controlled_squeezing.src.noise import noise_simulation
+from src.codes_built_in_superposition import simple_m_legged_code
+from src.visualizations import plot_light_states
+from src.noise import noise_simulation
 
 
 def _plus_or_minus_str(i:int) -> str:
