@@ -24,7 +24,7 @@ from qutip.qip.operations import ry
 from qutip.measurement import measurement_statistics_povm
 
 from src.quantum.qutip_support._common import fock_str
-from src.quantum.states.density_matrices.translations import density_matrix_to_pure_state
+from src.quantum.density_matrices.translations import density_matrix_to_pure_state
 from src.utils import tuples, numerics
 
 ## Visuals:

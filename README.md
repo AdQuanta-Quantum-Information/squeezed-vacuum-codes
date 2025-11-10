@@ -1,6 +1,7 @@
 # Squeezed Vacuum Quantum Error Correction Codes
 
-Python tools for simulating multi-legged squeezed vacuum bosonic quantum error correction codes. Includes probabilistic and deterministic preparation protocols, Kraus operator analysis, and numerical validation of quantum error correction conditions.
+Python tools for simulating multi-legged squeezed vacuum bosonic quantum error correction codes. 
+Includes probabilistic and deterministic preparation protocols, Kraus operator analysis, and numerical validation of quantum error correction conditions.
 
 
 
@@ -8,20 +9,28 @@ Python tools for simulating multi-legged squeezed vacuum bosonic quantum error c
 
 This codebase accompanies research on bosonic quantum error correction codes constructed from superpositions of squeezed vacuum states in multiple directions. The codes can protect quantum information encoded in continuous-variable (CV) systems against photon loss and dephasing errors.
 
-![alt text](assets/fig00.png)
 
 ### Key Features
 
 - **Multi-legged code generation**: Create m-legged bosonic codes (cat codes and squeezed vacuum codes) with arbitrary number of legs
+<p align="center">
+  <img src="assets/fig01.png" alt="alt text" width="90%">
+</p>
 - **Preparation protocols**: 
   - Probabilistic preparation via post-selection on ancilla qubits
   - Deterministic preparation using controlled squeezing and feed-forward
   - Measurement-free protocols using controlled rotations
+<p align="center">
+  <img src="assets/fig00.png" alt="alt text" width="70%">
+</p>
 - **Error analysis**: 
   - Kraus operator formalism for photon loss and dephasing channels
-  - Numerical verification of Knill-Laflamme quantum error correction conditions
-  - Cost function computation for comparing code performance
-- **Logical operations**: Implementation of logical X, Z gates and state rotations
+    - Numerical verification of Knill-Laflamme quantum error correction conditions
+    - Cost function computation for comparing code performance
+<p align="center">
+  <img src="assets/fig_numerics1.png" alt="Numerics figure" width="40%">
+</p>
+- **Logical operations**: Testing logical X, Z gates and state rotations
 - **Analytical expressions**: Symbolic computation of code properties using SymPy
 - **Visualization**: Wigner function plots, Fock distributions, and phase-space representations
 
@@ -29,7 +38,6 @@ This codebase accompanies research on bosonic quantum error correction codes con
 
 ### Squeezed Vacuum States
 
-![alt text](assets/fig01.png) 
 
 The codes are built from squeezed vacuum states of the form:
 ```
@@ -58,7 +66,9 @@ for photon loss (`Eⱼ = √(γʲ/j!) (1-γ)^{n/2} aʲ`) and dephasing (`Eⱼ = 
 
 
 
-![alt text](assets/fig02.png)
+<p align="center">
+  <img src="assets/fig02.png" alt="alt text" width="100%">
+</p>
 
 
 ## Repository Structure
@@ -134,120 +144,8 @@ Core packages:
 - **mpmath** (1.3.0): High-precision arithmetic for Kraus operators
 - **joblib** (1.5.2): Caching and parallelization
 
-## Usage Examples
-
-### Creating a 2-legged Squeezed Code
-
-```python
-from src.squeezing_code import SqueezingCode
-
-# Initialize code with 2 legs
-code = SqueezingCode(
-    squeezing_strength=2.0,  # r parameter
-    num_moments=200,         # Fock space truncation
-    num_legs=2,
-    verbose=True
-)
-
-# Get logical codewords
-logic_0, logic_1 = code.logical_states()
-
-# Get logical operators
-X = code.logical_X()
-Z = code.logical_Z()
-```
-
-### Probabilistic Preparation
-
-```python
-from src.preparation_circuits import probabilistic_2_legged_code
-
-# Prepare via post-selection
-r = 0.5
-branches = probabilistic_2_legged_code(r=r, num_moments=200)
-
-# branches[0] contains state and probability for |0_L⟩
-# branches[1] contains state and probability for |1_L⟩
-prob_logical_1 = branches[1]['prob']
-```
-
-### Computing Cost Functions
-
-```python
-from src.cost_functions import compute_cost_on_logical_codewords
-import numpy as np
-
-# Compare codes with different numbers of legs
-costs = compute_cost_on_logical_codewords(
-    fixed_param_name="r",
-    fixed_value=2.0,
-    x_name="γ",
-    x_vec=np.logspace(-6, -2, 20),
-    num_moments=500,
-    num_code_states=3,  # Compare m=2,4,6
-    code="squeeze",
-    measurement="overlap01",
-    noise_method="kraus-KL-style"
-)
-```
-
-### Verifying QECC Conditions
-
-```python
-from scripts.prove_QECC import (
-    identify_error_model,
-    define_encoding_scheme,
-    demonstrate_error_detection,
-    verify_qecc_conditions
-)
-
-# Define code
-num_moments = 100
-code_states = define_encoding_scheme("squeezed", num_moments)
-
-# Check orthogonality
-overlap = demonstrate_error_detection(*code_states)
-
-# Verify Knill-Laflamme conditions
-errors = identify_error_model()  # ['loss', 'dephasing']
-conditions = verify_qecc_conditions(code_states, errors, num_moments)
-```
-
-### Analytical Probability Calculation
-
-```python
-from scripts.probability_of_preparation import prob_analytical_evaluated_at
-
-# Analytical formula for preparation success
-r_value = 1.0
-prob_0 = prob_analytical_evaluated_at(L=0, r_val=r_value)
-prob_1 = prob_analytical_evaluated_at(L=1, r_val=r_value)
-
-print(f"P(|0_L⟩) = {prob_0:.4f}")
-print(f"P(|1_L⟩) = {prob_1:.4f}")
-```
-
-### Visualization
-
-```python
-from src.visualizations import plot_light_states
-
-# Create and visualize code states
-from src.codes_built_in_superposition import simple_m_legged_code
-
-psi_0, psi_1 = simple_m_legged_code(
-    m=4,                # 4-legged code
-    strength=2.0,       # squeezing strength
-    num_moments=200,
-    code_type="squeeze"
-)
-
-plot_light_states([psi_0, psi_1])
-```
-
 ## Key Scripts
 
-### Research Scripts
 
 - **`scripts/probability_of_preparation.py`**: Analyzes success probability of probabilistic preparation as a function of squeezing strength. Compares analytical expressions with numerical simulations.
 
@@ -258,8 +156,6 @@ plot_light_states([psi_0, psi_1])
 - **`scripts/deterministic_preparation.py`**: Implements feed-forward protocols for deterministic code preparation.
 
 - **`scripts/logical_x_test.py`**: Tests logical X operator implementation and validates state transitions.
-
-### Analysis Scripts
 
 - **`scripts/graphs_for_paper/code_family.py`**: Generates performance comparison plots for codes with different numbers of legs.
 
@@ -287,26 +183,9 @@ Clear cache if you modify core functions:
 rm -rf joblib_cache/
 ```
 
-## Testing
-
-Run unit tests:
-```bash
-python -m pytest tests/
-```
-
-Key test files:
-- `tests/test_kraus.py`: Validate Kraus operator completeness
-- `tests/test_squeeze_behavior.py`: Check squeezing operations
-- `tests/test_safe_factorial.py`: Numerical stability tests
-
-## Performance Notes
-
-- **Fock space truncation**: Use `num_moments=200-500` for most calculations. Higher values increase accuracy but slow computation.
-- **Kraus operators**: Dephasing channel requires many more operators than loss. Adjust `KRAUS_COST_THRESHOLD` in `globals.py` if needed.
-- **Precision**: Enable `PRECISE=True` for Kraus operators with very small γ to avoid numerical underflow.
-- **Parallelization**: Some functions support parallel execution via joblib (see `src/utils/caches.py`).
 
 ## Mathematical Notation
+Commonly used variables throughout the code (and the paper):
 
 - `r`: Squeezing strength (unitless)
 - `θ`: Squeezing direction angle
@@ -316,7 +195,6 @@ Key test files:
 - `|0_L⟩, |1_L⟩`: Logical codewords
 - `a, a†`: Bosonic ladder operators
 - `n̂ = a†a`: Number operator
-- `X, P`: Position and momentum operators
 
 ## Citation
 
@@ -332,6 +210,8 @@ If you use this code in your research, please cite:
 }
 ```
 
+
+
 ## Contributing
 
 Contributions are welcome! Please:
@@ -341,14 +221,11 @@ Contributions are welcome! Please:
 4. Submit a pull request
 
 ## License
-
 MIT License - see [LICENSE](LICENSE) file for details.
 
-Copyright (c) 2025 AdQuanta - Quantum Information
 
 ## Contact
-
-For questions or collaboration inquiries, please open an issue on GitHub.
+For questions or collaboration inquiries, you can open an issue on GitHub or reach via email to [nirgutman212@campus.technion.ac.il](mailto:nirgutman212@campus.technion.ac.il).
 
 ## Acknowledgments
 
