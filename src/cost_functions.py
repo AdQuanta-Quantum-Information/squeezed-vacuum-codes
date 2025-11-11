@@ -16,7 +16,7 @@ import itertools
 import warnings
 warnings.simplefilter('error', RuntimeWarning)  #TODO remove
 
-from typing import Literal, Callable, Iterable, TypeAlias, Final, Any
+from typing import Literal, Callable, Iterable, TypeAlias, Final, Any, TypedDict
 from typing import cast as type_cast
 
 import warnings
@@ -27,8 +27,7 @@ from qutip import Qobj
 
 
 if __name__ == "__main__":
-    from __init__ import add_project_to_path, add_root_to_path
-    # add_project_to_path()
+    from __init__ import  add_root_to_path
     path = add_root_to_path()
 
 from src.utils.visuals.matplotlib_support import save_figure, draw_now
@@ -57,11 +56,17 @@ if Globals.PRECISE:
 
 
 ## Types:
+
+LogicalBasisName : TypeAlias = Literal["main", "dual"]
+class CostPerLogicalBasis(TypedDict):
+    main : float
+    dual : float
+
 MeasurementTypeLiteral : TypeAlias = Literal["KL", "overlap01", "overlap00", "fidelity01", "fidelity00"]
 CodeTypeLiteral : TypeAlias = Literal["cat", "squeeze"]
 NoiseOptionLiteral : TypeAlias = Literal["simulated", "kraus-KL-style", "kraus-channel"]
-VariablesNameLiteral : TypeAlias = Literal["r", "γ", "mean_number"]
-CostPerNoiseDict : TypeAlias = dict[BosonicNoiseType, list[float]]
+VariablesNameLiteral : TypeAlias = Literal["r", "γ", "mean_n"]
+CostPerNoiseDict : TypeAlias = dict[BosonicNoiseType, list[CostPerLogicalBasis]]
 CostPerLegsPerNoiseDict : TypeAlias = dict[int, CostPerNoiseDict]
 
 
@@ -162,14 +167,14 @@ def kraus_map_overlap_matrices(
     N: int,
     code_type: CodeTypeLiteral,
     noise_type: BosonicNoiseType, 
-    noise_method: NoiseOptionLiteral
+    use_dual_code: bool = False,
 ) -> NDArray[np.object_]:  # a matrix of overlap matrices
 
     # Helper function wrapper already taking everything except j:
     def _kraus_j(j:int) -> Qobj:
         return kraus_operator_j(noise_type, N, γ, j)
     
-    ψ0, ψ1 = _get_m_legged_states(m=m, strength=r, num_moments=N, code_type=code_type, noise_type=noise_type)
+    ψ0, ψ1 = _get_m_legged_states(m=m, strength=r, num_moments=N, code_type=code_type, use_dual_code=use_dual_code)
     if "False" == False:
         _plot_code(ψ0, ψ1)
 
@@ -276,17 +281,10 @@ def _get_m_legged_states_before_deciding_on_basis(m: int, strength: float, num_m
     return ψ0, ψ1
 
 
-def _get_m_legged_states(m: int, strength: float, num_moments: int, code_type: _CodeTypes, noise_type: BosonicNoiseType) -> tuple[Qobj, Qobj]:
+def _get_m_legged_states(m: int, strength: float, num_moments: int, code_type: _CodeTypes, use_dual_code: bool) -> tuple[Qobj, Qobj]:
     """ Return the two logical states of an m-legged code.
     Cached for speed.
     """
-    ## Get logical states or dual basis states:
-    if noise_type == "dephasing":
-        use_dual_code = True
-    elif noise_type == "loss":
-        use_dual_code = False
-    else:
-        raise ValueError(f"Unknown noise type: {noise_type!r}")
 
     # Start with un-normalized states:
     ψ0, ψ1 = _get_m_legged_states_before_deciding_on_basis(m=m, strength=strength, num_moments=num_moments, code_type=code_type)
@@ -334,19 +332,20 @@ def _compute_cost_given_m_r_and_noise(
     noise_method: NoiseOptionLiteral, 
     measurement: MeasurementTypeLiteral,
     code_type: CodeTypeLiteral,
+    use_dual_code: bool,
     **kwargs
 ) -> float:
-           
+               
     match noise_method:
         case "kraus-KL-style":
-            overlap_matrices = kraus_map_overlap_matrices(m, r, γ, num_moments, code_type, noise_type, noise_method)
+            overlap_matrices = kraus_map_overlap_matrices(m, r, γ, num_moments, code_type, noise_type, use_dual_code)
             costs_matrix = _costs_matrix_from_overlap_matrices(overlap_matrices, measurement="overlap01")
             cost = float(np.nansum(costs_matrix))  # Sum matrix while ignoring NaNs
             if False == "False":
                 _plot_costs_matrix(costs_matrix)
 
-        case "simulated" | "kraus-channel":
-            ψ0, ψ1 = _get_m_legged_states(m=m, strength=r, num_moments=num_moments, code_type=code_type, noise_type=noise_type)
+        case "simulated" | "kraus-channel":      
+            ψ0, ψ1 = _get_m_legged_states(m=m, strength=r, num_moments=num_moments, code_type=code_type, use_dual_code=use_dual_code)
             noise_kwargs = dict(
                 noise_type = noise_type,
                 noise_method = noise_method,
@@ -356,7 +355,7 @@ def _compute_cost_given_m_r_and_noise(
             ρ_outs = [_get_noised_state(ρ_in, γ, **noise_kwargs) for ρ_in in ProgressBar(ρ_ins, prefix="different ρ     ")]
             f = overlap_matrix(ρ_ins, ρ_outs)
             cost = compute_cost_from_overlap_matrix(f, measurement)
-        
+                
         case _:
             raise ValueError(f"Unknown noise method: {noise_method!r}")
 
@@ -382,7 +381,7 @@ def _get_parameters_from_fixed_and_x(
                 r = value
             case "γ":
                 γ = value
-            case "mean_number":
+            case "mean_n":
                 r = find_parameter_for_target_mean_photon_number(
                     code_type=code,
                     m=m,
@@ -434,7 +433,7 @@ def compute_cost_on_logical_codewords(
     noise_method : NoiseOptionLiteral = "kraus-KL-style"  # "simulated", "kraus"
 ) -> CostPerLegsPerNoiseDict:
     
-    num_legs_vec = np.arange(2, 2+num_code_states*2, 2) 
+    num_legs_vec : list[int] = np.arange(2, 2+num_code_states*2, 2).tolist()  # even numbers from 2 to 2*num_code_states
     costs_for_all_m: CostPerLegsPerNoiseDict = dict()
 
     ## ========= Compute stuff =========:
@@ -446,8 +445,8 @@ def compute_cost_on_logical_codewords(
             ProgressBar.newest().append_extra_str(f"noise={noise_type}")
             noise_type = type_cast(BosonicNoiseType, noise_type)
 
-            cost_vec = []
-            for x in ProgressBar(x_vec, prefix=f"different {x_name}     "):      
+            cost_vec : list[CostPerLogicalBasis] = []
+            for x in ProgressBar(x_vec, prefix=f"different {x_name:5}"):      
                 ProgressBar.newest().append_extra_str(f"{x_name}={x:.{PROG_BAR_SIGNIFICANT_DIGITS}g}")
 
                 r, γ = _get_parameters_from_fixed_and_x(
@@ -460,16 +459,21 @@ def compute_cost_on_logical_codewords(
                 )
 
                 ## Compute cost (this call is cached):
-                cost = _compute_cost_given_m_r_and_noise(
-                    m, r, γ, 
-                    num_moments=num_moments,
-                    noise_type=noise_type, 
-                    noise_method=noise_method,
-                    measurement=measurement,
-                    code_type=code,
-                    mesolve_time_res=mesolve_time_res
-                )
-                cost_vec.append(cost)
+                costs : CostPerLogicalBasis = {}  #type: ignore
+                for use_dual_code in ProgressBar([False, True], prefix=f"logical-basis   "):      
+                    cost = _compute_cost_given_m_r_and_noise(
+                        m, r, γ, 
+                        num_moments=num_moments,
+                        noise_type=noise_type, 
+                        noise_method=noise_method,
+                        measurement=measurement,
+                        code_type=code,
+                        use_dual_code=use_dual_code,
+                        mesolve_time_res=mesolve_time_res
+                    )
+                    costs["dual" if use_dual_code else "main"] = cost
+
+                cost_vec.append(costs)
 
             costs_for_all_noises[noise_type] = cost_vec
 

@@ -22,7 +22,7 @@ from src.utils.visuals.colors import color_shades, _RgbFloatTuple
 from src.utils.prints import ProgressBar
 
 from src.cost_functions import compute_cost_on_logical_codewords
-from src.cost_functions import CodeTypeLiteral, MeasurementTypeLiteral, NoiseOptionLiteral, BosonicNoiseType, CostPerNoiseDict, CostPerLegsPerNoiseDict
+from src.cost_functions import CodeTypeLiteral, MeasurementTypeLiteral, NoiseOptionLiteral, BosonicNoiseType, CostPerNoiseDict, CostPerLegsPerNoiseDict, CostPerLogicalBasis, LogicalBasisName
 
 from globals import Globals
 
@@ -31,6 +31,50 @@ if Globals.LaTeX_RENDERING:
     plt.rcParams['font.family'] = 'serif'
     plt.rcParams['font.serif'] = ['Computer Modern Serif']
     plt.rcParams['text.latex.preamble'] = r'\usepackage{amsmath}'
+
+
+
+def _latex_toggled_str(latex_str:str, plain_str:str) -> str:
+    """Return latex_str if LaTeX rendering is enabled, else plain_str."""
+    if Globals.LaTeX_RENDERING:
+        return latex_str
+    else:
+        return plain_str
+
+
+def _format_float_for_title(value: float, use_latex: bool) -> str:
+    """Format a float for use in a figure title.
+
+    If use_latex is True, return a LaTeX math-mode string like
+    "$1\times10^{-6}$" so the TeX engine renders a proper exponent.
+    Otherwise return a compact plain string in scientific notation like
+    "1e-06".
+    """
+    if value == 0:
+        return r"$0$" if use_latex else "0"
+
+    if use_latex:
+        s = "{:.1e}".format(value)
+        mantissa_str, exp_str = s.split("e")
+        # clean mantissa (remove trailing .0)
+        try:
+            mant = float(mantissa_str)
+        except ValueError:
+            # fallback
+            return rf"${s}$"
+        # drop .0 when it's integer
+        if mant.is_integer():
+            mant_display = str(int(mant))
+        else:
+            mant_display = str(mant)
+        exp = int(exp_str)
+        # Return a LaTeX math expression
+        if mant_display == "1":
+            # omit the multiplicative 1 for aesthetics
+            return rf"$10^{{{exp}}}$"
+        return rf"${mant_display}\times10^{{{exp}}}$"
+    else:
+        return "{:.1e}".format(value)
 
 
 def _add_outside_legend(
@@ -155,9 +199,9 @@ def _add_outside_legend(
     return legend
 
 
-def _ylabel_for_measurement(measurement: MeasurementTypeLiteral, noise_method: NoiseOptionLiteral, dual_code:bool, noise:Literal["loss", "dephasing"]) -> str:
+def _ylabel_for_measurement(measurement: MeasurementTypeLiteral, noise_method: NoiseOptionLiteral, code_basis:LogicalBasisName, noise:Literal["loss", "dephasing"]) -> str:
     """Return the y-axis label for the given measurement type."""
-    L0, L1 = [r'+\!', r'-\!'] if dual_code else [r'0', r'1']
+    L0, L1 = [r'+\!', r'-\!'] if code_basis == "dual" else [r'0', r'1']
     sL0, sL1 = [r'%s_{L}' % (L) for L in [L0, L1]]
     match noise_method:
         case "simulated":
@@ -265,8 +309,21 @@ def _axis_setup(
     return fig, axes
 
 
-def _get_text_pos(final_graph_point: tuple[float, float], code: CodeTypeLiteral, m: int, noise_type: BosonicNoiseType) -> tuple[float, float]:
-    x = final_graph_point[0]*1.6 
+def _get_text_pos(
+    final_graph_point: tuple[float, float], 
+    code: CodeTypeLiteral, m: int, 
+    noise_type: BosonicNoiseType,
+    x_scale: Literal['linear', 'log'] = 'log',
+    x_dif: float = 1.0
+) -> tuple[float, float]:
+    
+    if x_scale == 'log':
+        x_factor = 1.6
+        x = final_graph_point[0] * x_factor
+    else:
+        x_factor = x_dif*0.4
+        x = final_graph_point[0] + x_factor
+
     y = final_graph_point[1]
 
     if noise_type == "photon_loss":
@@ -344,6 +401,8 @@ def _plot_results(
     x_vec: list[float],
     measurement: MeasurementTypeLiteral,
     noise_method : NoiseOptionLiteral,
+    loss_basis: LogicalBasisName,
+    dephasing_basis: LogicalBasisName,
     # defaults for plotting:
     grid: Literal["on", "off", "weak"] = "weak",
     fig_dpi: int = 500,
@@ -354,7 +413,9 @@ def _plot_results(
     _text_on_plots:bool = True,
     text_font_size:int = 16,
     text_legend_on_plot_font_size:int = 12, # only used if _text_on_plots is True
-    _adjust_ticks_font:bool = True
+    _adjust_ticks_font:bool = True,
+    x_scale: Literal['linear', 'log'] = 'log',
+    figure_title: str = ""
 ):
     """ Plot the results from compute_cost_on_logical_codewords(). """
 
@@ -362,6 +423,8 @@ def _plot_results(
     if x_vec_name in ["γ", "gamma"]:
         x_vec_name = "γ"
     elif x_vec_name == "r":
+        pass
+    elif x_vec_name == "num_photons":
         pass
     else:
         raise ValueError(f"Unknown x_vec_name: {x_vec_name!r}")
@@ -382,21 +445,23 @@ def _plot_results(
     )
     match x_vec_name:
         case "γ":
-            xlabel = r'$\gamma$ noise rate' 
+            xlabel = _latex_toggled_str(r"$\gamma$", "γ")+" noise rate"
         case "r":
-            xlabel = r'$r (\alpha)$ squeezing (displacement) strength'
+            xlabel = r'$r (%s)$ squeezing (displacement) strength'%(_latex_toggled_str(r'\alpha', 'α'))
+        case "num_photons":
+            xlabel = _latex_toggled_str(r'$\bar{n}$', 'n') +" (mean number)"
     # Loss plot:
-    y_label = _ylabel_for_measurement(measurement, noise_method, dual_code=False, noise="loss")
+    y_label = _ylabel_for_measurement(measurement, noise_method, code_basis=loss_basis, noise="loss")
     axes["loss"].set_xlabel(xlabel , fontsize=text_font_size)
     axes["loss"].set_ylabel(y_label, fontsize=text_font_size)
 
     # Dephasing plot:
-    y_label = _ylabel_for_measurement(measurement, noise_method, dual_code=True, noise="dephasing")
+    y_label = _ylabel_for_measurement(measurement, noise_method, code_basis=dephasing_basis, noise="dephasing")
     axes["dephasing"].set_xlabel(xlabel , fontsize=text_font_size)
     axes["dephasing"].set_ylabel(y_label, fontsize=text_font_size)
 
     for ax in axes.values():
-        if x_vec_name == "γ":
+        if x_scale == 'log':
             ax.set_xscale('log')
         ax.set_yscale('log')
 
@@ -426,9 +491,14 @@ def _plot_results(
 
         for noise_type, ax in axes.items():
             noise_type = type_cast(BosonicNoiseType, noise_type)
+            match noise_type:
+                case "loss": basis = loss_basis
+                case "dephasing": basis = dephasing_basis
+                case _: raise ValueError(f"Unknown noise type: {noise_type!r}")
 
             for j, (m, costs) in enumerate(results.items()):
-                y_vec = costs[noise_type]
+                costs_per_noise = costs[noise_type]
+                y_vec = [costs[basis] for costs in costs_per_noise]
 
                 color = colors[j]
                 legend_colors[code][m] = color
@@ -440,7 +510,7 @@ def _plot_results(
                 if _text_on_plots:
                     x_dif = x_vec[1] - x_vec[0]
                     final_graph_point = (x_vec[-1], y_vec[-1])
-                    text_pos = _get_text_pos(final_graph_point, code, m, noise_type)
+                    text_pos = _get_text_pos(final_graph_point, code, m, noise_type, x_scale=x_scale, x_dif=x_dif)
                     text = r"$\textbf{%s}$ $\mathbf{%s}$" % (code, m)
                     ax.text(*text_pos, text, fontsize=text_legend_on_plot_font_size, ha='left', va='center')
 
@@ -453,15 +523,23 @@ def _plot_results(
     else:
         legend = _add_outside_legend(fig, legend_colors, linewidth=_linewidth, legend_layout="2-rows", vertical_plots=vertical_plots)
 
-    plt.tight_layout(rect=(0, 0.05, 1, 1))  # Reserve space at bottom for legend
+    if figure_title != "":
+        fig.suptitle(figure_title, fontsize=text_font_size)
+
 
     if _adjust_ticks_font:
         for ax in axes.values():
             for axis in [ax.xaxis, ax.yaxis]:
                 axis.set_tick_params(labelsize=text_font_size)
 
+    if _text_on_plots:
+        plt.tight_layout()  
+    else:
+        plt.tight_layout(rect=(0, 0.05, 1, 1))  # Reserve space at bottom for legend
+
     if _connected_plots:
         plt.subplots_adjust(hspace=0.001)
+
 
     plt.show()
     print("Plotted.")
@@ -541,6 +619,10 @@ def plot_full_codewords_numeric_figure_x_is_r(
     ## ========= Inputs =========:
     x_vec_name = "num_photons"
     photon_num_vec = np.linspace(1e-3, max_photon_num, num_photon_num).tolist()
+    γ_str = _latex_toggled_str(r'$\gamma$', '$γ$')
+    # Format gamma for title (LaTeX math-mode if enabled) and for filenames (plain sci)
+    gamma_title_str = _format_float_for_title(γ, Globals.LaTeX_RENDERING)
+    gamma_file_str = _format_float_for_title(γ, False)
 
 
     ## ========= Compute =========:
@@ -553,7 +635,7 @@ def plot_full_codewords_numeric_figure_x_is_r(
         results = compute_cost_on_logical_codewords(
             fixed_param_name="γ",
             fixed_value=γ,
-            x_name="mean_number",
+            x_name="mean_n",
             x_vec=photon_num_vec,
             num_moments=num_moments,
             num_code_states=num_code_states,
@@ -570,8 +652,12 @@ def plot_full_codewords_numeric_figure_x_is_r(
         x_vec=photon_num_vec,
         measurement=measurement,
         noise_method=noise_method,
-        figure_name_extra=f"r-changing - γ={γ}",
+        loss_basis="dual",
+        dephasing_basis="main",
+        figure_name_extra=f"num-particles - γ={gamma_file_str}",
         N=num_moments,
+        x_scale = 'linear',
+        figure_title=f"Noise rate {γ_str} = {gamma_title_str}"
     )
 
 
