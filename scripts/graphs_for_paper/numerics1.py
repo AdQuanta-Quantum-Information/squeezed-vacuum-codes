@@ -608,7 +608,7 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
 
 def plot_full_codewords_numeric_figure_x_is_r(
     num_moments : int = 300,
-    num_photon_num: int = 21,
+    num_photon_num: int = 61,
     max_photon_num: float = 5.0,
     num_code_states:int = 3,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00", "fidelity01", "fidelity00"
@@ -618,7 +618,8 @@ def plot_full_codewords_numeric_figure_x_is_r(
     
     ## ========= Inputs =========:
     x_vec_name = "num_photons"
-    photon_num_vec = np.linspace(1e-3, max_photon_num, num_photon_num).tolist()
+    photon_num_vec  = np.linspace(1e-3, max_photon_num, num_photon_num).tolist()
+    photon_num_vec += np.linspace(5, 10, num_photon_num).tolist()
     γ_str = _latex_toggled_str(r'$\gamma$', '$γ$')
     # Format gamma for title (LaTeX math-mode if enabled) and for filenames (plain sci)
     gamma_title_str = _format_float_for_title(γ, Globals.LaTeX_RENDERING)
