@@ -158,7 +158,7 @@ def noise_simulation(
     n = a.dag() @ a
 
     match noise_family:
-        case 'photon_loss':
+        case 'loss'|'photon_loss':
             c_ops = [np.sqrt(γ) * a]
         case 'dephasing':
             c_ops = [np.sqrt(γ) * n]

@@ -17,8 +17,8 @@ if __name__ == "__main__":
     from __init__ import add_root_to_path
     add_root_to_path()
 
-from projects.controlled_squeezing.src.analytical_expressions import analytical_code_word
-from projects.controlled_squeezing.src.codes_built_in_superposition import simple_m_legged_code
+from src.analytical_expressions import analytical_code_word
+from src.codes_built_in_superposition import simple_m_legged_code
 
 
 NUM_MOMENTS : Final[int] = 60  # number of moments in the squeezed state

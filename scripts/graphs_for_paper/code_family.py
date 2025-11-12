@@ -1,17 +1,11 @@
 import numpy as np
 
 import matplotlib.pyplot as plt
-import matplotlib as mpl
 from matplotlib.axes import Axes
-
-from typing import Final
-
-from qutip import Qobj, identity, destroy, create, basis, qeye, qzero
 
 
 if __name__ == "__main__":
-    from __init__ import add_project_to_path, add_root_to_path
-    # add_project_to_path()
+    from __init__ import add_root_to_path
     path = add_root_to_path()
 
 from src.utils.visuals.matplotlib_support import save_figure, draw_now
@@ -20,7 +14,7 @@ from src.utils.prints import ProgressBar
 from src.quantum.visualizations.wigner_function import plot_plain_wigner 
 from src.quantum.qutip_support._common import print_fock, fock_str
 
-from projects.controlled_squeezing.src.codes_built_in_superposition import simple_m_legged_code
+from src.codes_built_in_superposition import simple_m_legged_code
 
 
 
@@ -54,7 +48,7 @@ def plot_family(
     max_m:int = 8,
     strength:float = 1.5,  
     fig_size = (12, 6),
-    high_resolution:bool = True,
+    high_resolution:bool = False,
     with_colorbar:bool = False,
     print_states:bool = True,
 ):

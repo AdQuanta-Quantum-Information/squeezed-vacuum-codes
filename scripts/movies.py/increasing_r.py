@@ -1,26 +1,30 @@
+""" This script generates a video showing the effect of increasing the squeezing parameter 'r' 
+on simple m-legged quantum error-correcting codes, followed by the effect of decoherence over time. 
+
+In addition to the requirements found in 'requirements.txt', this script requires `moviepy` for video generation.
+"""
+
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 
-import itertools
 
 from qutip import Qobj, identity, destroy, create, basis, qeye, qzero, mesolve
 
 
-
 if __name__ == "__main__":
-    from __init__ import add_project_to_path, add_root_to_path
-    # add_project_to_path()
+    from __init__ import add_root_to_path
     path = add_root_to_path()
 
 from src.utils.visuals.matplotlib_support import save_figure, draw_now, clean_figure_memory
 from src.utils.visuals.videos import VideoRecorder
 from src.utils.prints import ProgressBar
 
-from projects.controlled_squeezing.src.codes_built_in_superposition import simple_m_legged_code
-from projects.controlled_squeezing.src.visualizations import plot_light_states
-from projects.controlled_squeezing.src.noise import noise_simulation
+from src.codes_built_in_superposition import simple_m_legged_code
+from src.visualizations import plot_light_states
+from src.noise import noise_simulation
 
 
 def _plus_or_minus_str(i:int) -> str:
@@ -55,10 +59,10 @@ def _single_plot_states(ψ0:Qobj, ψ1:Qobj, r:float, t:float, high_resolution:bo
 
 
 def record_video(
-    r_values:list[float] = np.linspace(0.0, 2.0,  51).tolist(),
-    t_values:list[float] = np.linspace(0.0, 3.0, 101).tolist(),
+    r_values:list[float] = np.linspace(0.0, 2.0,  101).tolist(),
+    t_values:list[float] = np.linspace(0.0, 3.0, 201).tolist(),
     num_legs:int = 2,
-    num_moments:int = 30,
+    num_moments:int = 100,
     γ_photon_loss:float = 1.0,
     high_resolution:bool = True
 ):
@@ -84,13 +88,17 @@ def record_video(
 
     ## Decoherence time:
     # Simulate decoherence:
+    time_res = len(t_values)
+    adjusted_γ_photon_loss = γ_photon_loss * t_values[-1]
+
     ψ0, ψ1 = _get_code_states(num_legs, r_values[-1], num_moments)
     noised_states = [
-        noise_simulation(ψi, γ_photon_loss, times=t_values)
+        noise_simulation(ψi, "loss", rate=adjusted_γ_photon_loss, time_res=time_res, output_intermediate_states=True)
         for ψi in [ψ0, ψ1]
     ]
     # Iterate couples of states for each time t
-    for t, (ψ0_t, ψ1_t) in ProgressBar(enumerate(zip(*noised_states))):
+    for time_index, (ψ0_t, ψ1_t) in ProgressBar(enumerate(zip(*noised_states))):
+        t = t_values[time_index]
         fig = _single_plot_states(ψ0_t, ψ1_t, r_values[-1], t, high_resolution=high_resolution)
         _capture_frame(fig)
     

@@ -54,7 +54,7 @@ from qutip import basis, tensor, qeye, squeeze, displace, measurement, rand_ket,
 from qutip import destroy, create
 
 from src.quantum.qutip_support._common import fock_str
-from src.quantum.states.density_matrices.translations import density_matrix_to_pure_state
+from src.quantum.density_matrices.translations import density_matrix_to_pure_state
 from src.utils import tuples, numerics
 
 ## Visuals:

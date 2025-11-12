@@ -6,15 +6,14 @@ from sympy import lambdify
 
 from scipy.optimize import minimize
 
-from typing import Final, Literal, Iterable, Callable, cast
+from typing import Final, Literal, Iterable, Callable, cast, TypeVar
 from collections import deque
 
 import time
 
 
 if __name__ == "__main__":
-    from __init__ import add_project_to_path, add_root_to_path
-    # add_project_to_path()
+    from __init__ import add_root_to_path
     path = add_root_to_path()
 
 from src.utils.maths import factorial
@@ -29,9 +28,14 @@ from globals import Globals
 from src import bosonic_operators
 
 
+## Types:
+# Type that is either a float or a sympy expression:
+_NumberOrSympyExpr = TypeVar('_NumberOrSympyExpr', float, sp.Expr)
+
+
 NUM_MOMENTS : Final[int] = 100
 DEFAULT_L_CUT_OFF : Final[int] = 1_000
-DEFAULT_UPPER_BOUND_FOR_SEARCH : Final[float] = 2.5
+DEFAULT_UPPER_BOUND_FOR_SEARCH : Final[float] = 10.0
 
 r_symbol = sp.symbols('r')
 L_symbol = sp.symbols('L')
@@ -162,7 +166,7 @@ def k_from_logical_value(m:int, logical_value:int) -> int:
     
     return k
 
-def _strip_imaginary_part_from_symbolic_expr_if_close_to_real(numerical_value:sp.Expr) -> sp.Expr:
+def _strip_imaginary_part_from_symbolic_expr_if_close_to_real(numerical_value:_NumberOrSympyExpr) -> _NumberOrSympyExpr:
     if isinstance(numerical_value, (int, float, complex, np.floating, np.integer)):
         type_ = "native"
     elif isinstance(numerical_value, sp.Expr):
@@ -194,6 +198,61 @@ def _strip_imaginary_part_from_symbolic_expr_if_close_to_real(numerical_value:sp
         numerical_value = sp.re(numerical_value)
 
     return numerical_value
+
+
+
+def _numerical_exact_summation_mean_photon_number_for_cat_codeword(m:int, alpha:float, k:int) -> float:
+    """Numerical evaluation (NumPy) of the analytic expression for the
+    mean photon number of an m-legged cat codeword for a given logical
+    sector k and displacement alpha.
+
+    ``alpha`` (may be real or complex). The function computes
+    abs(alpha)**2 * S_{k+1} / S_k where
+    S_j = sum_{d=0}^{m-1} omega^{j*d} * exp(-|alpha|^2*(1-omega^d))
+    and omega = exp(i*2*pi/m).
+    """
+    # Basic checks
+    assert m > 0
+    assert 0 <= k < m
+
+    abs_alpha_square = abs(alpha)**2
+
+    # m-th root of unity
+    omega = np.exp(1j * 2.0 * np.pi / float(m))
+
+    numerator = 0+0j
+    denominator = 0+0j
+
+    for d in range(m):
+        omega_d = omega**d
+        # exponent may be complex because of omega_d; use numpy complex exp
+        exponent = np.exp(-abs_alpha_square * (1.0 - omega_d))
+
+        numerator += (omega**((k + 1) * d)) * exponent
+        denominator += (omega**(k * d)) * exponent
+
+    # Multiply by |alpha|^2 as in analytic expression
+    result = abs_alpha_square * numerator
+
+    # Safe division: if denominator is effectively zero, handle cases
+    denom_abs = abs(denominator)
+    tiny = 1e-14
+    if denom_abs < tiny:
+        # If numerator is also effectively zero, return 0.0
+        if abs(result) < tiny:
+            return 0.0
+        # Otherwise this is a problematic division (shouldn't usually happen)
+        raise ZeroDivisionError(f"Denominator in cat mean-photon expression is numerically zero (m={m}, k={k}, alpha={alpha!r})")
+
+    result = result / denominator
+
+    # Strip tiny imaginary component and return float
+    imag_part = np.imag(result)
+    if not np.isclose(imag_part, 0.0, atol=1e-10):
+        # If the imaginary part is unexpectedly large, surface an informative error
+        raise AssertionError(f"Mean photon number has non-negligible imaginary part: {imag_part}")
+
+    return float(np.real(result))
 
 
 def _numerical_exact_summation_mean_photon_number_for_squeezed_codeword(m:int, r:float, k:int, L_cut_off:int) -> float:
@@ -259,10 +318,14 @@ def _numerical_exact_summation_mean_photon_number_for_squeezed_codeword(m:int, r
 
 def mean_photon_number_for_cat_codeword(m:int, alpha:float, logical_value:int, analytic_substitution:bool=True) -> float:
     k = k_from_logical_value(m, logical_value)
-    analytical_expression = _analytic_mean_photon_number_for_cat_k_state(m, k)
-    numerical_value = analytical_expression.subs({alpha_symbol:alpha}).evalf().doit()
-    numerical_value = _strip_imaginary_part_from_symbolic_expr_if_close_to_real(numerical_value)    
 
+    if analytic_substitution:
+        analytical_expression = _analytic_mean_photon_number_for_cat_k_state(m, k)
+        numerical_value : float = analytical_expression.subs({alpha_symbol:alpha}).evalf().doit()  #type: ignore
+    else:
+        numerical_value = _numerical_exact_summation_mean_photon_number_for_cat_codeword(m, alpha, k)
+
+    numerical_value = _strip_imaginary_part_from_symbolic_expr_if_close_to_real(numerical_value)    
     return float(numerical_value)
 
 
@@ -604,7 +667,7 @@ def _test6_plot_mean_photons_params_for_different_codes(
     )
 
     for target_mean_photon_number in ProgressBar(target_mean_photon_numbers, prefix="per target mean photons: "):
-        for code_type in ProgressBar(['squeeze', 'cat'], prefix="per code type: "):
+        for code_type in ProgressBar(['cat', 'squeeze'], prefix="per code type: "):
 
             code_type = cast(Literal['squeeze', 'cat'], code_type)
 
@@ -635,11 +698,11 @@ def _test6_plot_mean_photons_params_for_different_codes(
 
 if __name__ == "__main__":
     # _test1()
-    _test2_squeezed_codes()
+    # _test2_squeezed_codes()
     # _test3_infinite_vs_finite_series()
     # _test4_cat_state()
     # _test5_get_parameter_for_given_mean_photons()
-    # _test6_plot_mean_photons_params_for_different_codes()
+    _test6_plot_mean_photons_params_for_different_codes()
 
     print("Done.")
 
