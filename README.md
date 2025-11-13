@@ -13,26 +13,35 @@ This codebase accompanies research on bosonic quantum error correction codes con
 ### Key Features
 
 - **Multi-legged code generation**: Create m-legged bosonic codes (cat codes and squeezed vacuum codes) with arbitrary number of legs
-<p align="center">
-  <img src="assets/fig01.png" alt="alt text" width="90%">
+<p align="left">
+  <img src="assets/fig01.png" alt="alt text" width="50%">
 </p>
+
 - **Preparation protocols**: 
   - Probabilistic preparation via post-selection on ancilla qubits
   - Deterministic preparation using controlled squeezing and feed-forward
   - Measurement-free protocols using controlled rotations
-<p align="center">
-  <img src="assets/fig00.png" alt="alt text" width="70%">
-</p>
+  <p align="left">
+    <img src="assets/fig00.png" alt="alt text" width="40%">
+  </p>
+
+
 - **Error analysis**: 
+  - `qutip.mesolve` noise simulations
+  <p align="left">
+    <video src="assets/movie - r increases  then noise.mp4" controls width="50%"></video>
+  </p>
+
   - Kraus operator formalism for photon loss and dephasing channels
     - Numerical verification of Knill-Laflamme quantum error correction conditions
     - Cost function computation for comparing code performance
-<p align="center">
-  <img src="assets/fig_numerics1.png" alt="Numerics figure" width="40%">
-</p>
+    <p align="left">
+      <img src="assets/fig_numerics1.png" alt="Numerics figure" width="30%">
+    </p>
+
 - **Logical operations**: Testing logical X, Z gates and state rotations
 - **Analytical expressions**: Symbolic computation of code properties using SymPy
-- **Visualization**: Wigner function plots, Fock distributions, and phase-space representations
+- **Visualization** : Wigner function plots, Fock distributions, and phase-space representations
 
 ## Physics Background
 
@@ -65,9 +74,8 @@ The codes satisfy the Knill-Laflamme conditions:
 for photon loss (`Eⱼ = √(γʲ/j!) (1-γ)^{n/2} aʲ`) and dephasing (`Eⱼ = √(γʲ/j!) exp(-γn²/2) nʲ`) channels.
 
 
-
-<p align="center">
-  <img src="assets/fig02.png" alt="alt text" width="100%">
+<p align="left">
+  <img src="assets/fig02.png" alt="alt text" width="80%">
 </p>
 
 
