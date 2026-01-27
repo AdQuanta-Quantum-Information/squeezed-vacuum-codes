@@ -406,10 +406,10 @@ def _plot_results(
     # defaults for plotting:
     grid: Literal["on", "off", "weak"] = "weak",
     fig_dpi: int = 500,
-    vertical_plots: bool = True,
+    vertical_plots: bool = False,
     figure_name_extra: str = "",
     N: int|None = None,
-    _connected_plots:bool = True,
+    _connected_plots:bool = False,
     _text_on_plots:bool = True,
     text_font_size:int = 16,
     text_legend_on_plot_font_size:int = 12, # only used if _text_on_plots is True
@@ -557,9 +557,9 @@ def _plot_results(
 
 
 def plot_full_codewords_numeric_figure_x_is_gamma(
-    num_moments : int = 500,
+    num_moments : int = 200,
     num_gammas:int = 5,
-    num_code_states:int = 2,
+    num_code_states:int = 3,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00"
     noise_method : NoiseOptionLiteral = "kraus-KL-style",  # "simulated", "kraus-KL-style", "kraus-channel"
     mean_photon_number : float = 2.0
@@ -579,7 +579,7 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
 
         results = compute_cost_on_logical_codewords(
             fixed_value=mean_photon_number,
-            fixed_param_name="mean_number",
+            fixed_param_name="mean_n",
             x_name="γ",
             x_vec=γ_vec,
             num_moments=num_moments,
@@ -598,6 +598,8 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
         measurement=measurement,
         noise_method=noise_method,
         N=num_moments,
+        loss_basis="main",
+        dephasing_basis="dual",
     )
 
     ## Wait for user to close:
@@ -664,5 +666,5 @@ def plot_full_codewords_numeric_figure_x_is_r(
 
 
 if __name__ == "__main__":
-    # plot_full_codewords_numeric_figure_x_is_gamma()
-    plot_full_codewords_numeric_figure_x_is_r()
+    plot_full_codewords_numeric_figure_x_is_gamma()
+    # plot_full_codewords_numeric_figure_x_is_r()
