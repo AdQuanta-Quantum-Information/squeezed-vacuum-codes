@@ -1,5 +1,6 @@
 import numpy as np
 from mpmath import mp
+from math import comb
 
 import qutip 
 from qutip import Qobj, basis, coherent, squeeze
@@ -21,7 +22,7 @@ from src.utils.caches import cache
 
 
 from typing import TypeAlias, Literal, Generator, cast
-_CodeTypes : TypeAlias = Literal["cat", "squeeze"]
+_CodeTypes : TypeAlias = Literal["cat", "squeeze", "binomial"]
 
 
 if Globals.PRECISE:
@@ -72,6 +73,14 @@ def simple_m_legged_state(
     ## Checks:
     # assert num_qudit_values == 2, "Number of qudit values must be exactly 2. No support for qudits yet."
     assert m >= 1, "Number of legs must be at least 1."
+
+    ## Special case for binomial codes:
+    if code_type == "binomial":
+        return binomial_code_state(
+            m=m, s=s, num_moments=num_moments, qubit_logical_value=qubit_logical_value, num_qudit_values=num_qudit_values,
+            _force_normalized=_force_normalized,
+            _prog_bar=_prog_bar
+        )
 
 
     m_vals = range(m)
@@ -179,6 +188,65 @@ def simple_m_legged_code(
     return states
 
 
+def binomial_code_state( 
+    m: int, s: float, num_moments: int, qubit_logical_value:int=0, num_qudit_values:int=2,
+    _force_normalized:bool=True,
+    _prog_bar:bool=True
+) -> Qobj:
+
+    assert num_qudit_values == 2, "binomial case implemented for qubit (num_qudit_values=2) only."
+
+    N = m
+    K = s
+
+    # if K < 1:
+    #     raise ValueError("Need K >= 1 to have both even/odd (|0_L>, |1_L>) binomial codewords.")
+
+    if qubit_logical_value not in (0, 1):
+        raise ValueError("For qubit binomial code, qubit_logical_value must be 0 or 1.")
+
+    # dimension check: largest occupied Fock index is K*N
+    n_max = K * N
+    if n_max >= num_moments:
+        raise ValueError(
+            f"num_moments too small for binomial: need num_moments > K*N = {n_max}, got {num_moments}."
+        )
+
+    # normalization: sum_{k even} C(K,k) = sum_{k odd} C(K,k) = 2^{K-1}
+    if Globals.PRECISE:
+        denom = mp.sqrt(mp.power(2, K - 1))
+    else:
+        denom = np.sqrt(2 ** (K - 1))
+
+    legs = []
+    # offset=0 -> even k; offset=1 -> odd k
+    offset = qubit_logical_value
+    k_vals = range(offset, K + 1, 2)
+
+    if _prog_bar:
+        k_vals = ProgressBar(k_vals, prefix=f"building |{qubit_logical_value}_L⟩  ", expected_end=len(range(offset, K+1, 2)))
+
+    for k in k_vals:
+        n = k * N
+        if Globals.PRECISE:
+            amp = mp.sqrt(mp.binomial(K, k)) / denom
+            amp = complex(amp)  # qutip likes python complex
+        else:
+            amp = np.sqrt(comb(K, k)) / denom
+
+        leg = amp * basis(num_moments, n)
+        legs.append(leg)
+
+    final_state: Qobj = sum(legs)  # type: ignore
+
+    if _force_normalized:
+        try:
+            final_state.unit(inplace=True)
+        except ZeroDivisionError:
+            pass
+
+    return final_state
+
 
 
 
@@ -219,3 +287,15 @@ def get_m_legged_states(
         ψ1.unit(inplace=True)
 
     return ψ0, ψ1
+
+
+
+def _test():
+    from src.visualizations import plot_light_states
+
+    b0, b1 = get_m_legged_states(2, 20.0, 100, "binomial", use_dual_code=False)
+    plot_light_states([b0, b1])
+    print("Done.")
+
+if __name__ == "__main__":
+    _test()

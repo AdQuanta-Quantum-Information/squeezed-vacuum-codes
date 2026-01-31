@@ -121,6 +121,11 @@ def _analytic_mean_photon_number_for_squeezed_k_state(m:int, k:int, L_threshold:
     return result
 
 
+def _analytic_mean_photon_number_for_binomial_k_state(m: int, logical_value: int) -> sp.Expr:
+    # For qubit (d=2) binomial codes: <n> = (m/2)*(r) with r ≡ N
+    return m * r_symbol / 2
+
+
 def _analytic_mean_photon_number_for_cat_k_state(m:int, k:int) -> sp.Expr:
     d_symbol = sp.symbols('d', integer=True)
     
@@ -345,9 +350,21 @@ def mean_photon_number_for_squeezed_codeword(m:int, r:float, logical_value:int, 
         return _numerical_exact_summation_mean_photon_number_for_squeezed_codeword(m, r, k, L_cut_off)
 
 
+def mean_photon_number_for_binomial_codeword(m:int, r:float, logical_value:int, analytic_substitution:bool=True, _k:int|None=None) -> float:
+    ## Ignore logical value and use k if provided:
+    if _k is not None:
+        raise NotImplementedError("Binomial code mean photon number not implemented for k input.")
+    
+    # Ignore analytic substitution == False:
+    analytic_substitution = True
+    analytical_expression = _analytic_mean_photon_number_for_binomial_k_state(m, logical_value)
+    numerical_value = analytical_expression.subs({r_symbol:r}).evalf().doit()
+    return float(numerical_value)
+
+
 @cache(ram=True, disk=True)
 def find_parameter_for_target_mean_photon_number(
-    code_type:Literal['cat', 'squeeze'],
+    code_type:_CodeTypes,
     m:int,
     logical_value:int,
     target_mean_photon_number:float,
@@ -366,7 +383,7 @@ def find_parameter_for_target_mean_photon_number(
 
 
 def get_single_input_function_from_symbolic_expression(
-    code_type:Literal['cat', 'squeeze'],        
+    code_type:_CodeTypes,        
     m:int,
     logical_value:int
 ) -> Callable[[float], float]:
@@ -385,7 +402,7 @@ def get_single_input_function_from_symbolic_expression(
 
 
 def get_mean_photon_number(
-    code_type:Literal['cat', 'squeeze'],        
+    code_type:_CodeTypes,        
     m:int,
     logical_value:int,
     parameter:float,
@@ -397,6 +414,8 @@ def get_mean_photon_number(
             return mean_photon_number_for_cat_codeword(m, parameter, logical_value, analytic_substitution=analytic_substitution)
         case 'squeeze':
             return mean_photon_number_for_squeezed_codeword(m, parameter, logical_value, analytic_substitution=analytic_substitution, L_cut_off=cut_off)
+        case "binomial":
+            return mean_photon_number_for_binomial_codeword(m, parameter, logical_value, analytic_substitution=analytic_substitution)
         case _:
             raise ValueError(f"Unknown code type: {code_type!r}")
 
@@ -667,9 +686,9 @@ def _test6_plot_mean_photons_params_for_different_codes(
     )
 
     for target_mean_photon_number in ProgressBar(target_mean_photon_numbers, prefix="per target mean photons: "):
-        for code_type in ProgressBar(['cat', 'squeeze'], prefix="per code type: "):
+        for code_type in ProgressBar(['cat', 'squeeze', "binomial"], prefix="per code type: "):
 
-            code_type = cast(Literal['squeeze', 'cat'], code_type)
+            code_type = cast(Literal['squeeze', 'cat', "binomial"], code_type)
 
             parameter = find_parameter_for_target_mean_photon_number(
                 code_type=code_type,

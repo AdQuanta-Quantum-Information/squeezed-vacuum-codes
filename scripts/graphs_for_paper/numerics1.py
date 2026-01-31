@@ -21,8 +21,10 @@ from src.utils.visuals.matplotlib_support import save_figure, draw_now
 from src.utils.visuals.colors import color_shades, _RgbFloatTuple
 from src.utils.prints import ProgressBar
 
+
+from src.codes_built_in_superposition import _CodeTypes
 from src.cost_functions import compute_cost_on_logical_codewords
-from src.cost_functions import CodeTypeLiteral, MeasurementTypeLiteral, NoiseOptionLiteral, BosonicNoiseType, CostPerNoiseDict, CostPerLegsPerNoiseDict, CostPerLogicalBasis, LogicalBasisName
+from src.cost_functions import MeasurementTypeLiteral, NoiseOptionLiteral, BosonicNoiseType, CostPerNoiseDict, CostPerLegsPerNoiseDict, CostPerLogicalBasis, LogicalBasisName
 
 from globals import Globals
 
@@ -311,7 +313,7 @@ def _axis_setup(
 
 def _get_text_pos(
     final_graph_point: tuple[float, float], 
-    code: CodeTypeLiteral, m: int, 
+    code: _CodeTypes, m: int, 
     noise_type: BosonicNoiseType,
     x_scale: Literal['linear', 'log'] = 'log',
     x_dif: float = 1.0
@@ -396,7 +398,7 @@ def _extend_axis_without_grid(ax: Axes, extension_factor: float = 0.2) -> None:
 
 def _plot_results(
     # Mandatory inputs:
-    per_code_results: dict[CodeTypeLiteral, CostPerLegsPerNoiseDict],
+    per_code_results: dict[_CodeTypes, CostPerLegsPerNoiseDict],
     x_vec_name: Literal["γ", "gamma", "r", "num_photons"],
     x_vec: list[float],
     measurement: MeasurementTypeLiteral,
@@ -406,10 +408,10 @@ def _plot_results(
     # defaults for plotting:
     grid: Literal["on", "off", "weak"] = "weak",
     fig_dpi: int = 500,
-    vertical_plots: bool = False,
+    vertical_plots: bool = True,
     figure_name_extra: str = "",
     N: int|None = None,
-    _connected_plots:bool = False,
+    _connected_plots:bool = True,
     _text_on_plots:bool = True,
     text_font_size:int = 16,
     text_legend_on_plot_font_size:int = 12, # only used if _text_on_plots is True
@@ -435,7 +437,8 @@ def _plot_results(
     ## ========= Constants =========:
     _linewidth = 3
     # _colors =  ["tab_blue", "tab_red"]
-    _colors =  ["blue", "red"]
+    _possible_colors =  ["blue", "red", 'green']
+    _colors = _possible_colors[:len(codes)]
 
     ## ========= Plot =========:
     fig, axes = _axis_setup(
@@ -484,7 +487,7 @@ def _plot_results(
     )
 
     for code, base_color in zip(codes, _colors, strict=True):
-        code = type_cast(CodeTypeLiteral, code)
+        code = type_cast(_CodeTypes, code)
         results = per_code_results[code]
         num_m = len(results)
         colors = color_shades(base_color, num_m+1)[:-1]  # Skip the darkest color
@@ -557,7 +560,7 @@ def _plot_results(
 
 
 def plot_full_codewords_numeric_figure_x_is_gamma(
-    num_moments : int = 200,
+    num_moments : int = 50,
     num_gammas:int = 5,
     num_code_states:int = 3,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00"
@@ -568,14 +571,14 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
     ## ========= Inputs =========:
     x_vec_name = "γ"
 
-    γ_vec = np.logspace(-16, -5, num_gammas).tolist()
+    γ_vec = np.logspace(-7, -3, num_gammas).tolist()
 
     ## ========= Compute =========:
-    per_code_results : dict[CodeTypeLiteral, CostPerLegsPerNoiseDict] = dict()
+    per_code_results : dict[_CodeTypes, CostPerLegsPerNoiseDict] = dict()
 
-    for code in ProgressBar(["squeeze", "cat"], prefix="different code  "):
+    for code in ProgressBar(["squeeze", "cat", "binomial"], prefix="different code  "):
         ProgressBar.newest().append_extra_str(f"{code!r}")
-        code = type_cast(CodeTypeLiteral, code)
+        code = type_cast(_CodeTypes, code)
 
         results = compute_cost_on_logical_codewords(
             fixed_value=mean_photon_number,
@@ -629,10 +632,10 @@ def plot_full_codewords_numeric_figure_x_is_r(
 
 
     ## ========= Compute =========:
-    per_code_results : dict[CodeTypeLiteral, CostPerLegsPerNoiseDict] = dict()
+    per_code_results : dict[_CodeTypes, CostPerLegsPerNoiseDict] = dict()
 
     for code in ProgressBar(["squeeze", "cat"], prefix="different code  "):
-        code = type_cast(CodeTypeLiteral, code)
+        code = type_cast(_CodeTypes, code)
         ProgressBar.newest().append_extra_str(f"code={code}")
 
         results = compute_cost_on_logical_codewords(

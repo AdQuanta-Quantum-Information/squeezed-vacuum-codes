@@ -38,7 +38,7 @@ from src.utils.caches import cache
 
 from src.squeezing_code import SqueezingCode
 from src.visualizations import plot_light_states, plot_fock_distribution
-from src.codes_built_in_superposition import simple_m_legged_code, get_m_legged_states
+from src.codes_built_in_superposition import simple_m_legged_code, get_m_legged_states, _CodeTypes
 from src.noise import noise_simulation, BosonicNoiseType, test_effect_of_time_resolution
 from src.metrics import compute_cross_overlap_mat
 from src.bosonic_operators import get_operator
@@ -63,7 +63,6 @@ class CostPerLogicalBasis(TypedDict):
     dual : float
 
 MeasurementTypeLiteral : TypeAlias = Literal["KL", "overlap01", "overlap00", "fidelity01", "fidelity00"]
-CodeTypeLiteral : TypeAlias = Literal["cat", "squeeze"]
 NoiseOptionLiteral : TypeAlias = Literal["simulated", "kraus-KL-style", "kraus-channel"]
 VariablesNameLiteral : TypeAlias = Literal["r", "γ", "mean_n"]
 CostPerNoiseDict : TypeAlias = dict[BosonicNoiseType, list[CostPerLogicalBasis]]
@@ -165,7 +164,7 @@ def _check_operators(_num_kraus_ops:int, _kraus_j:Callable[[int], Qobj]) -> int:
 def kraus_map_overlap_matrices(
     m:int, r:float, γ:float, 
     N: int,
-    code_type: CodeTypeLiteral,
+    code_type: _CodeTypes,
     noise_type: BosonicNoiseType, 
     use_dual_code: bool = False,
 ) -> NDArray[np.object_]:  # a matrix of overlap matrices
@@ -303,7 +302,7 @@ def _compute_cost_given_m_r_and_noise(
     noise_type: BosonicNoiseType, 
     noise_method: NoiseOptionLiteral, 
     measurement: MeasurementTypeLiteral,
-    code_type: CodeTypeLiteral,
+    code_type: _CodeTypes,
     use_dual_code: bool,
     **kwargs
 ) -> float:
@@ -344,7 +343,7 @@ def _get_parameters_from_fixed_and_x(
     fixed_value: float,
     x_name: VariablesNameLiteral,
     x: float,
-    code: CodeTypeLiteral,
+    code: _CodeTypes,
     m: int
 ) -> tuple[float, float]:
             
@@ -405,7 +404,7 @@ def compute_cost_on_logical_codewords(
     num_moments : int = 500,
     mesolve_time_res: int = 1501,
     num_code_states:int = 3,
-    code: CodeTypeLiteral = "squeeze",  # "squeeze", "cat"
+    code: _CodeTypes = "squeeze",  # "squeeze", "cat"
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "worst_fidelity", "average_fidelity", "coherence_survival", "overlap01", "overlap00"
     noise_method : NoiseOptionLiteral = "kraus-KL-style"  # "simulated", "kraus"
 ) -> CostPerLegsPerNoiseDict:
