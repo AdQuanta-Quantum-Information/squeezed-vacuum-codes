@@ -38,7 +38,7 @@ from src.utils.caches import cache
 
 from src.squeezing_code import SqueezingCode
 from src.visualizations import plot_light_states, plot_fock_distribution
-from src.codes_built_in_superposition import simple_m_legged_code, simple_m_legged_state, _CodeTypes
+from src.codes_built_in_superposition import simple_m_legged_code, get_m_legged_states
 from src.noise import noise_simulation, BosonicNoiseType, test_effect_of_time_resolution
 from src.metrics import compute_cross_overlap_mat
 from src.bosonic_operators import get_operator
@@ -174,7 +174,7 @@ def kraus_map_overlap_matrices(
     def _kraus_j(j:int) -> Qobj:
         return kraus_operator_j(noise_type, N, γ, j)
     
-    ψ0, ψ1 = _get_m_legged_states(m=m, strength=r, num_moments=N, code_type=code_type, use_dual_code=use_dual_code)
+    ψ0, ψ1 = get_m_legged_states(m=m, strength=r, num_moments=N, code_type=code_type, use_dual_code=use_dual_code)
     if "False" == False:
         _plot_code(ψ0, ψ1)
 
@@ -275,34 +275,6 @@ def _plot_code(ψ0:Qobj, ψ1:Qobj) -> None:
     draw_now()
 
 
-@cache(ram=True, disk=False)
-def _get_m_legged_states_before_deciding_on_basis(m: int, strength: float, num_moments: int, code_type: _CodeTypes) -> tuple[Qobj, Qobj]:
-    ψ0, ψ1 = simple_m_legged_code(m=m, strength=strength, num_moments=num_moments, code_type=code_type, _force_normalized=NORMALIZE_LOGICAL_STATES_BEFORE_APPLYING_HADAMARD)
-    return ψ0, ψ1
-
-
-def _get_m_legged_states(m: int, strength: float, num_moments: int, code_type: _CodeTypes, use_dual_code: bool) -> tuple[Qobj, Qobj]:
-    """ Return the two logical states of an m-legged code.
-    Cached for speed.
-    """
-
-    # Start with un-normalized states:
-    ψ0, ψ1 = _get_m_legged_states_before_deciding_on_basis(m=m, strength=strength, num_moments=num_moments, code_type=code_type)
-
-    if use_dual_code:
-        # Dual basis states: |+⟩ = (|0⟩ + |1⟩)/√2 and |−⟩ = (|0⟩ - |1⟩)/√2
-        ψ_plus  = (ψ0 + ψ1)/np.sqrt(2)
-        ψ_minus = (ψ0 - ψ1)/np.sqrt(2)
-        ψ0, ψ1 = ψ_plus, ψ_minus
-
-    # Normalize states:
-    if not NORMALIZE_LOGICAL_STATES_BEFORE_APPLYING_HADAMARD:
-        ψ0.unit(inplace=True)
-        ψ1.unit(inplace=True)
-
-    return ψ0, ψ1
-
-
 def _get_noised_state(ρ_in: Qobj, γ: float, **kwargs) -> Qobj:
     N : int = int(ρ_in.dims[0][0])
     noise_type : BosonicNoiseType = kwargs["noise_type"] 
@@ -345,7 +317,12 @@ def _compute_cost_given_m_r_and_noise(
                 _plot_costs_matrix(costs_matrix)
 
         case "simulated" | "kraus-channel":      
-            ψ0, ψ1 = _get_m_legged_states(m=m, strength=r, num_moments=num_moments, code_type=code_type, use_dual_code=use_dual_code)
+            ψ0, ψ1 = get_m_legged_states(
+                m=m, strength=r, num_moments=num_moments, code_type=code_type, 
+                use_dual_code=use_dual_code,
+                normalize_logical_states_before_applying_hadamard=NORMALIZE_LOGICAL_STATES_BEFORE_APPLYING_HADAMARD
+            )
+            
             noise_kwargs = dict(
                 noise_type = noise_type,
                 noise_method = noise_method,
@@ -574,8 +551,8 @@ def _sanity_check_2_no_noise_overlap(
     γ = 1e-16
 ) -> None:
 
-    ψ0, ψ1 = _get_m_legged_states(m, r, num_moments, code_type="squeeze", noise_type="loss")
-    ψ_plus, ψ_minus = _get_m_legged_states(m, r, num_moments, code_type="squeeze", noise_type="dephasing")
+    ψ0, ψ1 = get_m_legged_states(m, r, num_moments, code_type="squeeze", noise_type="loss", normalize_logical_states_before_applying_hadamard=NORMALIZE_LOGICAL_STATES_BEFORE_APPLYING_HADAMARD)
+    ψ_plus, ψ_minus = get_m_legged_states(m, r, num_moments, code_type="squeeze", noise_type="dephasing", normalize_logical_states_before_applying_hadamard=NORMALIZE_LOGICAL_STATES_BEFORE_APPLYING_HADAMARD)
     # _plot_code(ψ0, ψ1)
     # _plot_code(ψ_plus, ψ_minus)
 

@@ -17,6 +17,7 @@ from src.squeezing_direction import squeezing_direction_to_squeezing_phase
 from globals import Globals
 from src._numerics import π, exp
 
+from src.utils.caches import cache
 
 
 from typing import TypeAlias, Literal, Generator, cast
@@ -137,7 +138,7 @@ def simple_m_legged_code(
     m: int, strength: float, num_moments: int, code_type: _CodeTypes, 
     num_digits:int=2, 
     _prog_bar:bool=True,
-      _force_normalized:bool=True
+    _force_normalized:bool=True
 ) -> tuple[Qobj, ...]:
     """
     Generate m-leg quantum error correction code, with both |0⟩ and |1⟩ logical states.
@@ -179,3 +180,42 @@ def simple_m_legged_code(
 
 
 
+
+
+@cache(ram=True, disk=False)
+def _get_m_legged_states_before_deciding_on_basis(
+    m: int, strength: float, num_moments: int, code_type: _CodeTypes,
+    normalize_logical_states_before_applying_hadamard: bool
+) -> tuple[Qobj, Qobj]:
+    ψ0, ψ1 = simple_m_legged_code(m=m, strength=strength, num_moments=num_moments, code_type=code_type, _force_normalized=normalize_logical_states_before_applying_hadamard)
+    return ψ0, ψ1
+
+## This is a cached version of get_m_legged_states, defined below.
+# This also supports choosing between standard and dual basis states.
+def get_m_legged_states(
+    m: int, strength: float, num_moments: int, code_type: _CodeTypes, 
+    use_dual_code: bool = False, 
+    normalize_logical_states_before_applying_hadamard: bool=True
+) -> tuple[Qobj, Qobj]:
+    """ Return the two logical states of an m-legged code.
+    Cached for speed.
+    """
+
+    # Start with un-normalized states:
+    ψ0, ψ1 = _get_m_legged_states_before_deciding_on_basis(
+        m=m, strength=strength, num_moments=num_moments, code_type=code_type,
+        normalize_logical_states_before_applying_hadamard=normalize_logical_states_before_applying_hadamard
+    )
+
+    if use_dual_code:
+        # Dual basis states: |+⟩ = (|0⟩ + |1⟩)/√2 and |−⟩ = (|0⟩ - |1⟩)/√2
+        ψ_plus  = (ψ0 + ψ1)/np.sqrt(2)
+        ψ_minus = (ψ0 - ψ1)/np.sqrt(2)
+        ψ0, ψ1 = ψ_plus, ψ_minus
+
+    # Normalize states:
+    if not normalize_logical_states_before_applying_hadamard:
+        ψ0.unit(inplace=True)
+        ψ1.unit(inplace=True)
+
+    return ψ0, ψ1
