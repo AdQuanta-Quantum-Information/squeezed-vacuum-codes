@@ -262,9 +262,9 @@ def _axis_setup(
     if vertical_plots:
         nrows, ncols = 2, 1
         if _connected_plots:
-            fig_size = (5,8)
+            fig_size = (5,10.5)
         else:
-            fig_size = (5,10)
+            fig_size = (5,12)
     else:
         if _connected_plots:
             raise ValueError("Connected plots only supported for vertical arrangement.")
@@ -393,6 +393,172 @@ def _extend_axis_without_grid(ax: Axes, extension_factor: float = 0.2) -> None:
     for line in ax.get_ygridlines():
         line.set_clip_path(clip_patch)
         line.set_clip_on(True)
+
+
+def _adjust_label_positions_to_avoid_overlap(
+    ax: Axes,
+    label_data: list[tuple[tuple[float, float], str, dict]],
+    min_y_distance_factor: float = 1.5,
+    x_scale: Literal['linear', 'log'] = 'log'
+) -> list[tuple[float, float]]:
+    """
+    Adjust label positions to avoid overlaps in log-scale y-axis plots.
+    
+    Parameters
+    ----------
+    ax : Axes
+        The matplotlib axes containing the labels.
+    label_data : list[tuple[tuple[float, float], str, dict]]
+        List of (position, text, kwargs) for each label.
+    min_y_distance_factor : float, optional
+        Minimum distance between labels as a factor of the smaller y-value.
+    x_scale : Literal['linear', 'log'], optional
+        Scale of the x-axis.
+        
+    Returns
+    -------
+    adjusted_positions : list[tuple[float, float]]
+        List of adjusted (x, y) positions for each label.
+    """
+    if not label_data:
+        return []
+    
+    # Sort labels by y-position
+    sorted_indices = sorted(range(len(label_data)), key=lambda i: label_data[i][0][1])
+    sorted_labels = [label_data[i] for i in sorted_indices]
+    
+    # Initialize adjusted positions
+    adjusted_positions = [pos for pos, _, _ in sorted_labels]
+    
+    # Adjust overlapping labels in log space
+    for i in range(1, len(adjusted_positions)):
+        prev_x, prev_y = adjusted_positions[i-1]
+        curr_x, curr_y = adjusted_positions[i]
+        
+        # Calculate minimum distance in log space
+        if prev_y > 0 and curr_y > 0:
+            log_prev_y = np.log10(prev_y)
+            log_curr_y = np.log10(curr_y)
+            
+            # Minimum log-space distance (about 0.15 on log scale)
+            min_log_distance = np.log10(min_y_distance_factor)
+            
+            if log_curr_y - log_prev_y < min_log_distance:
+                # Shift current label up
+                new_log_y = log_prev_y + min_log_distance
+                adjusted_positions[i] = (curr_x, 10 ** new_log_y)
+    
+    # Map back to original order
+    final_positions = [None] * len(label_data)
+    for i, orig_idx in enumerate(sorted_indices):
+        final_positions[orig_idx] = adjusted_positions[i]
+    
+    return final_positions
+
+
+def _add_unified_legend_for_both_axes(
+    fig: Figure,
+    axes: dict[BosonicNoiseType, Axes],
+    legend_colors: dict[str, dict[int, _RgbFloatTuple]],
+    linewidth: float = 3,
+    vertical_plots: bool = True,
+    fontsize: int = 10
+) -> None:
+    """
+    Add a unified legend for both axes showing codes and their m values.
+    
+    Parameters
+    ----------
+    fig : Figure
+        The matplotlib figure.
+    axes : dict
+        Dictionary of axes for loss and dephasing.
+    legend_colors : dict
+        Nested dict mapping {code: {m: color}}.
+    linewidth : float, optional
+        Line width for legend handles.
+    vertical_plots : bool, optional
+        Whether plots are arranged vertically.
+    fontsize : int, optional
+        Font size for legend text.
+    """
+    codes = list(legend_colors.keys())
+    all_m = sorted(set().union(*(legend_colors[code].keys() for code in codes)))
+    
+    # Build legend entries: header row + data rows
+    handles: list[Line2D] = []
+    labels: list[str] = []
+    
+    # We need to track which indices are headers for formatting later
+    header_indices = []
+    
+    # Header row: empty cell, then m-value headers
+    empty_handle = Line2D([], [], linestyle="none", marker="", markersize=0)
+    handles.append(empty_handle)
+    labels.append("")  # Empty label for top-left cell
+    header_indices.append(0)
+    
+    for idx, m in enumerate(all_m, start=1):
+        m_header_handle = Line2D([], [], linestyle="none", marker="", markersize=0)
+        handles.append(m_header_handle)
+        labels.append(str(m))
+        header_indices.append(idx)
+    
+    # Data rows: each code gets a row
+    for code in codes:
+        # First column: code name label
+        code_label_handle = Line2D([], [], linestyle="none", marker="", markersize=0)
+        handles.append(code_label_handle)
+        labels.append(code)
+        
+        # Subsequent columns: colored lines for each m value
+        for m in all_m:
+            if m in legend_colors[code]:
+                handles.append(Line2D([0], [0], color=legend_colors[code][m], linewidth=linewidth))
+                labels.append("")  # No label, just show the line
+            else:
+                # Empty placeholder
+                handles.append(Line2D([], [], linestyle="none", alpha=0))
+                labels.append("")
+    
+    # Position legend
+    if vertical_plots:
+        loc = "lower center"
+        bbox_to_anchor = (0.5, 0.02)
+    else:
+        loc = "lower center"
+        bbox_to_anchor = (0.5, -0.05)
+    
+    ncol = len(all_m) + 1  # Number of columns = number of m-values + 1 for code name column
+    
+    legend = fig.legend(
+        handles, labels,
+        ncol=ncol,
+        loc=loc,
+        bbox_to_anchor=bbox_to_anchor,
+        fontsize=fontsize + 2,
+        columnspacing=1.0,
+        handletextpad=0.5,
+        borderaxespad=0.5,
+        frameon=False
+    )
+    
+    # Format: bold headers in first row
+    for idx in header_indices:
+        legend.get_texts()[idx].set_fontweight("bold")
+        legend.get_texts()[idx].set_horizontalalignment("center")
+    
+    # X-shift for text positioning (in points) - adjust these values to shift text left/right
+    # Order: [empty cell, m-value 1, m-value 2, m-value 3, code 1, code 2, code 3, ...]
+    x_shift = [0, 0, 0, 0]  # First 4 are headers: empty, then three m-values
+    
+    # Apply x-shift to header texts
+    for i, idx in enumerate(header_indices):
+        if i < len(x_shift):
+            text = legend.get_texts()[idx]
+            text.set_position((text.get_position()[0] + x_shift[i], text.get_position()[1]))
+    
+    return legend
         
 
 
@@ -413,6 +579,7 @@ def _plot_results(
     N: int|None = None,
     _connected_plots:bool = True,
     _text_on_plots:bool = True,
+    label_style: Literal["inline", "inline-adjusted", "legend"] = "legend",
     text_font_size:int = 16,
     text_legend_on_plot_font_size:int = 12, # only used if _text_on_plots is True
     _adjust_ticks_font:bool = True,
@@ -486,6 +653,12 @@ def _plot_results(
         linewidth = _linewidth
     )
 
+    # Storage for label data (used in inline-adjusted mode)
+    label_data_per_axis: dict[BosonicNoiseType, list[tuple[tuple[float, float], str, dict]]] = {
+        "loss": [],
+        "dephasing": []
+    }
+
     for code, base_color in zip(codes, _colors, strict=True):
         code = type_cast(_CodeTypes, code)
         results = per_code_results[code]
@@ -509,22 +682,53 @@ def _plot_results(
                 label = f"{m}"
                 ax.plot(x_vec, y_vec, label=label, color=color, **plot_style)  #type: ignore
 
-                ## add label next to final point:
-                if _text_on_plots:
-                    x_dif = x_vec[1] - x_vec[0]
+                ## Handle inline labels
+                if label_style in ["inline", "inline-adjusted"]:
+                    x_dif = x_vec[1] - x_vec[0] if len(x_vec) > 1 else 1.0
                     final_graph_point = (x_vec[-1], y_vec[-1])
                     text_pos = _get_text_pos(final_graph_point, code, m, noise_type, x_scale=x_scale, x_dif=x_dif)
                     text = r"$\textbf{%s}$ $\mathbf{%s}$" % (code, m)
-                    ax.text(*text_pos, text, fontsize=text_legend_on_plot_font_size, ha='left', va='center')
+                    text_kwargs = dict(fontsize=text_legend_on_plot_font_size, ha='left', va='center')
+                    
+                    if label_style == "inline":
+                        # Direct inline labels (original behavior)
+                        ax.text(*text_pos, text, **text_kwargs)
+                    else:
+                        # Store for later adjustment
+                        label_data_per_axis[noise_type].append((text_pos, text, text_kwargs))
 
-    if _text_on_plots:
+    # Apply adjusted label positions if needed
+    if label_style == "inline-adjusted":
+        for noise_type, ax in axes.items():
+            noise_type = type_cast(BosonicNoiseType, noise_type)
+            label_data = label_data_per_axis[noise_type]
+            
+            if label_data:
+                # Adjust positions to avoid overlap
+                adjusted_positions = _adjust_label_positions_to_avoid_overlap(
+                    ax, label_data, 
+                    min_y_distance_factor=1.5,
+                    x_scale=x_scale
+                )
+                
+                # Add labels with adjusted positions
+                for (orig_pos, text, kwargs), adjusted_pos in zip(label_data, adjusted_positions):
+                    ax.text(*adjusted_pos, text, **kwargs)
+
+    # Handle axis extension and legend
+    if label_style in ["inline", "inline-adjusted"]:
         for ax in axes.values():
             _extend_axis_without_grid(ax, extension_factor=0.25)
-
-    if _text_on_plots:
         legend = None
+    elif label_style == "legend":
+        legend = _add_unified_legend_for_both_axes(
+            fig, axes, legend_colors, 
+            linewidth=_linewidth, 
+            vertical_plots=vertical_plots,
+            fontsize=12
+        )
     else:
-        legend = _add_outside_legend(fig, legend_colors, linewidth=_linewidth, legend_layout="2-rows", vertical_plots=vertical_plots)
+        raise ValueError(f"Unknown label_style: {label_style!r}")
 
     if figure_title != "":
         fig.suptitle(figure_title, fontsize=text_font_size)
@@ -535,10 +739,10 @@ def _plot_results(
             for axis in [ax.xaxis, ax.yaxis]:
                 axis.set_tick_params(labelsize=text_font_size)
 
-    if _text_on_plots:
+    if label_style in ["inline", "inline-adjusted"]:
         plt.tight_layout()  
     else:
-        plt.tight_layout(rect=(0, 0.05, 1, 1))  # Reserve space at bottom for legend
+        plt.tight_layout(rect=(0, 0.12, 1, 1))  # Reserve space at bottom for legend
 
     if _connected_plots:
         plt.subplots_adjust(hspace=0.001)
@@ -560,7 +764,7 @@ def _plot_results(
 
 
 def plot_full_codewords_numeric_figure_x_is_gamma(
-    num_moments : int = 50,
+    num_moments : int = 100,
     num_gammas:int = 5,
     num_code_states:int = 3,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00"

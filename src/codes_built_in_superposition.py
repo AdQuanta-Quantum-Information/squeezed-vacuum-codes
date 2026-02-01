@@ -188,63 +188,64 @@ def simple_m_legged_code(
     return states
 
 
-def binomial_code_state( 
-    m: int, s: float, num_moments: int, qubit_logical_value:int=0, num_qudit_values:int=2,
-    _force_normalized:bool=True,
-    _prog_bar:bool=True
-) -> Qobj:
+def _binomial_code_check_inputs(m, s, num_moments, qubit_logical_value, num_qudit_values, mode, p):
+    """Helper to check inputs for binomial_code_state."""
+    assert num_qudit_values == 2, "Number of qudit values must be exactly 2. No support for qudits yet."
 
-    assert num_qudit_values == 2, "binomial case implemented for qubit (num_qudit_values=2) only."
-
-    N = m
-    K = s
-
-    # if K < 1:
-    #     raise ValueError("Need K >= 1 to have both even/odd (|0_L>, |1_L>) binomial codewords.")
-
+    N = int(m)
     if qubit_logical_value not in (0, 1):
-        raise ValueError("For qubit binomial code, qubit_logical_value must be 0 or 1.")
+        raise ValueError("qubit_logical_value must be 0 or 1.")
 
-    # dimension check: largest occupied Fock index is K*N
+    if mode == "K":
+        K = int(round(s))
+        if abs(s - K) > 1e-9:
+            raise ValueError("mode='K' requires integer K (pass s as an int).")
+    elif mode == "nbar":
+        nbar_target = float(s)
+        K = max(2, int(round(2.0 * nbar_target / N)))
+    else:
+        raise ValueError("mode must be 'K' or 'nbar'.")
+
     n_max = K * N
     if n_max >= num_moments:
-        raise ValueError(
-            f"num_moments too small for binomial: need num_moments > K*N = {n_max}, got {num_moments}."
-        )
+        raise ValueError(f"num_moments too small: need > K*N = {n_max}, got {num_moments}.")
 
-    # normalization: sum_{k even} C(K,k) = sum_{k odd} C(K,k) = 2^{K-1}
-    if Globals.PRECISE:
-        denom = mp.sqrt(mp.power(2, K - 1))
-    else:
-        denom = np.sqrt(2 ** (K - 1))
-
-    legs = []
-    # offset=0 -> even k; offset=1 -> odd k
     offset = qubit_logical_value
     k_vals = range(offset, K + 1, 2)
 
-    if _prog_bar:
-        k_vals = ProgressBar(k_vals, prefix=f"building |{qubit_logical_value}_L⟩  ", expected_end=len(range(offset, K+1, 2)))
+    return N, K, n_max, k_vals
 
+
+def binomial_code_state(
+    m: int,
+    s: float,
+    num_moments: int,
+    qubit_logical_value: int = 0,
+    num_qudit_values: int = 2,
+    *,
+    mode: Literal["K", "nbar"] = "nbar",          # "K" or "nbar"
+    p: float = 0.5,           # only used if you want biased weights
+    _force_normalized: bool = True,
+    _prog_bar: bool = True
+) -> Qobj:
+    
+    N, K, n_max, k_vals = _binomial_code_check_inputs(m, s, num_moments, qubit_logical_value, num_qudit_values, mode, p)
+    if _prog_bar:
+        k_vals = ProgressBar(k_vals, prefix=f"building |{qubit_logical_value}_L⟩  ",
+                             expected_end=len(k_vals))
+
+    legs = []
+    norm2 = 0.0  # compute sector norm numerically (works for p != 0.5 too)
     for k in k_vals:
         n = k * N
-        if Globals.PRECISE:
-            amp = mp.sqrt(mp.binomial(K, k)) / denom
-            amp = complex(amp)  # qutip likes python complex
-        else:
-            amp = np.sqrt(comb(K, k)) / denom
-
-        leg = amp * basis(num_moments, n)
-        legs.append(leg)
+        w = comb(K, k) * (p**k) * ((1 - p)**(K - k))  # binomial pmf (up to normalization)
+        amp = np.sqrt(w)
+        norm2 += (amp**2)
+        legs.append(amp * basis(num_moments, n))
 
     final_state: Qobj = sum(legs)  # type: ignore
-
     if _force_normalized:
-        try:
-            final_state.unit(inplace=True)
-        except ZeroDivisionError:
-            pass
-
+        final_state = final_state / np.sqrt(norm2)   # exact for our constructed sector
     return final_state
 
 
