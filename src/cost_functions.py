@@ -344,8 +344,9 @@ def _get_parameters_from_fixed_and_x(
     x_name: VariablesNameLiteral,
     x: float,
     code: _CodeTypes,
-    m: int
-) -> tuple[float, float]:
+    m: int,
+    num_moments: int|Callable[[float], int]
+) -> tuple[float, float, int]:
             
     r = None
     γ = None
@@ -373,7 +374,12 @@ def _get_parameters_from_fixed_and_x(
     assert r is not None, "Both r and γ must be assigned." 
     assert γ is not None, "Both r and γ must be assigned."
 
-    return r, γ  #type: ignore
+    if callable(num_moments):
+        _num_moment = num_moments(x)
+    else:
+        _num_moment = num_moments
+
+    return r, γ, _num_moment  #type: ignore
 
 
 def _costs_matrix_from_overlap_matrices(overlap_matrices:NDArray[np.object_], measurement:MeasurementTypeLiteral) -> NDArray[np.float64]:
@@ -401,7 +407,7 @@ def compute_cost_on_logical_codewords(
     fixed_value: float,
     x_name: VariablesNameLiteral,
     x_vec:list[float],
-    num_moments : int = 500,
+    num_moments : int|Callable[[float], int] = 500,
     mesolve_time_res: int = 1501,
     num_code_states:int = 3,
     code: _CodeTypes = "squeeze",  # "squeeze", "cat"
@@ -425,13 +431,14 @@ def compute_cost_on_logical_codewords(
             for x in ProgressBar(x_vec, prefix=f"different {x_name:5}"):      
                 ProgressBar.newest().append_extra_str(f"{x_name}={x:.{PROG_BAR_SIGNIFICANT_DIGITS}g}")
 
-                r, γ = _get_parameters_from_fixed_and_x(
+                r, γ, _num_moment = _get_parameters_from_fixed_and_x(
                     fixed_param_name=fixed_param_name,
                     fixed_value=fixed_value,
                     x_name=x_name,
                     x=x,
                     code=code,
-                    m=m
+                    m=m,
+                    num_moments=num_moments
                 )
 
                 ## Compute cost (this call is cached):
@@ -439,7 +446,7 @@ def compute_cost_on_logical_codewords(
                 for use_dual_code in ProgressBar([False, True], prefix=f"logical-basis   "):      
                     cost = _compute_cost_given_m_r_and_noise(
                         m, r, γ, 
-                        num_moments=num_moments,
+                        num_moments=_num_moment,
                         noise_type=noise_type, 
                         noise_method=noise_method,
                         measurement=measurement,

@@ -9,7 +9,7 @@ from matplotlib.path import Path
 import matplotlib.patches as mpatches
 
 
-from typing import Literal 
+from typing import Literal, Callable
 from typing import cast as type_cast
 
 
@@ -20,6 +20,7 @@ if __name__ == "__main__":
 from src.utils.visuals.matplotlib_support import save_figure, draw_now
 from src.utils.visuals.colors import color_shades, _RgbFloatTuple
 from src.utils.prints import ProgressBar
+from src.utils.strings import format_float_for_as_str
 
 
 from src.codes_built_in_superposition import _CodeTypes
@@ -43,40 +44,6 @@ def _latex_toggled_str(latex_str:str, plain_str:str) -> str:
     else:
         return plain_str
 
-
-def _format_float_for_title(value: float, use_latex: bool) -> str:
-    """Format a float for use in a figure title.
-
-    If use_latex is True, return a LaTeX math-mode string like
-    "$1\times10^{-6}$" so the TeX engine renders a proper exponent.
-    Otherwise return a compact plain string in scientific notation like
-    "1e-06".
-    """
-    if value == 0:
-        return r"$0$" if use_latex else "0"
-
-    if use_latex:
-        s = "{:.1e}".format(value)
-        mantissa_str, exp_str = s.split("e")
-        # clean mantissa (remove trailing .0)
-        try:
-            mant = float(mantissa_str)
-        except ValueError:
-            # fallback
-            return rf"${s}$"
-        # drop .0 when it's integer
-        if mant.is_integer():
-            mant_display = str(int(mant))
-        else:
-            mant_display = str(mant)
-        exp = int(exp_str)
-        # Return a LaTeX math expression
-        if mant_display == "1":
-            # omit the multiplicative 1 for aesthetics
-            return rf"$10^{{{exp}}}$"
-        return rf"${mant_display}\times10^{{{exp}}}$"
-    else:
-        return "{:.1e}".format(value)
 
 
 def _add_outside_legend(
@@ -486,33 +453,33 @@ def _add_unified_legend_for_both_axes(
     all_m = sorted(set().union(*(legend_colors[code].keys() for code in codes)))
     
     # Build legend entries: header row + data rows
+    # Headers will be invisible, we'll add them manually later
     handles: list[Line2D] = []
     labels: list[str] = []
     
-    # We need to track which indices are headers for formatting later
     header_indices = []
     
-    # Header row: empty cell, then m-value headers
+    # Header row: empty cell, then code names (will make invisible)
     empty_handle = Line2D([], [], linestyle="none", marker="", markersize=0)
     handles.append(empty_handle)
     labels.append("")  # Empty label for top-left cell
     header_indices.append(0)
     
-    for idx, m in enumerate(all_m, start=1):
-        m_header_handle = Line2D([], [], linestyle="none", marker="", markersize=0)
-        handles.append(m_header_handle)
-        labels.append(str(m))
+    for idx, code in enumerate(codes, start=1):
+        code_header_handle = Line2D([], [], linestyle="none", marker="", markersize=0)
+        handles.append(code_header_handle)
+        labels.append("")  # Empty label - we'll add text manually
         header_indices.append(idx)
     
-    # Data rows: each code gets a row
-    for code in codes:
-        # First column: code name label
-        code_label_handle = Line2D([], [], linestyle="none", marker="", markersize=0)
-        handles.append(code_label_handle)
-        labels.append(code)
+    # Data rows: each m-value gets a row
+    for m in all_m:
+        # First column: m value label
+        m_label_handle = Line2D([], [], linestyle="none", marker="", markersize=0)
+        handles.append(m_label_handle)
+        labels.append(str(m))
         
-        # Subsequent columns: colored lines for each m value
-        for m in all_m:
+        # Subsequent columns: colored lines for each code
+        for code in codes:
             if m in legend_colors[code]:
                 handles.append(Line2D([0], [0], color=legend_colors[code][m], linewidth=linewidth))
                 labels.append("")  # No label, just show the line
@@ -529,7 +496,7 @@ def _add_unified_legend_for_both_axes(
         loc = "lower center"
         bbox_to_anchor = (0.5, -0.05)
     
-    ncol = len(all_m) + 1  # Number of columns = number of m-values + 1 for code name column
+    ncol = len(codes) + 1  # Number of columns = number of codes + 1 for m-value column
     
     legend = fig.legend(
         handles, labels,
@@ -543,20 +510,34 @@ def _add_unified_legend_for_both_axes(
         frameon=False
     )
     
-    # Format: bold headers in first row
+    # Make header row invisible (but keeps table structure)
     for idx in header_indices:
-        legend.get_texts()[idx].set_fontweight("bold")
-        legend.get_texts()[idx].set_horizontalalignment("center")
+        legend.get_texts()[idx].set_alpha(0)
     
-    # X-shift for text positioning (in points) - adjust these values to shift text left/right
-    # Order: [empty cell, m-value 1, m-value 2, m-value 3, code 1, code 2, code 3, ...]
-    x_shift = [0, 0, 0, 0]  # First 4 are headers: empty, then three m-values
+    # Now manually add visible header labels above the legend
+    fig.canvas.draw()  # Need to draw to get positions
     
-    # Apply x-shift to header texts
-    for i, idx in enumerate(header_indices):
-        if i < len(x_shift):
-            text = legend.get_texts()[idx]
-            text.set_position((text.get_position()[0] + x_shift[i], text.get_position()[1]))
+    # Get positions of the header text elements to place our visible text
+    legend_handles = legend.legend_handles
+    legend_texts = legend.get_texts()
+    
+    # X-shift values for fine-tuning header positions (in points)
+    x_shift = [0, 0, 0]  # One for each code: [squeeze, cat, binomial]
+    
+    # Add visible text for code headers positioned above their columns
+    for i, code in enumerate(codes):
+        # Get the position of the invisible header text
+        header_idx = header_indices[i + 1]  # +1 to skip empty cell
+        header_text = legend_texts[header_idx]
+        
+        # Get its position
+        pos = header_text.get_position()
+        
+        # Create new visible text at same position
+        fig.text(pos[0] + x_shift[i]/72.0, pos[1], code, 
+                ha='center', va='center', 
+                fontsize=fontsize + 2, fontweight='bold',
+                transform=header_text.get_transform())
     
     return legend
         
@@ -575,6 +556,7 @@ def _plot_results(
     grid: Literal["on", "off", "weak"] = "weak",
     fig_dpi: int = 500,
     vertical_plots: bool = True,
+    figure_name_prefix: str = "",
     figure_name_extra: str = "",
     N: int|None = None,
     _connected_plots:bool = True,
@@ -752,9 +734,10 @@ def _plot_results(
     print("Plotted.")
 
     file_name = ""\
+        + figure_name_prefix \
         + measurement  \
         + f" - {noise_method}" \
-        + (f" - N={N}" if N is not None else "") \
+        + (f" - N={N}" if isinstance(N, (int,float)) else "") \
         + (f" - {figure_name_extra}" if figure_name_extra else "") 
     
     save_figure(plt.gcf(), file_name, dpi=fig_dpi, transparent=True, extensions=['pdf', 'png'])
@@ -814,31 +797,34 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
     input("Press Enter to close the plots and end the program...")
 
 
+def _num_moments_func(mean_n: float) -> int:
+    """Determine number of moments based on mean photon number."""
+    return 50*int(np.ceil(mean_n))
 
-def plot_full_codewords_numeric_figure_x_is_r(
-    num_moments : int = 300,
-    num_photon_num: int = 61,
-    max_photon_num: float = 5.0,
+
+def plot_full_codewords_numeric_figure_x_is_nbar(
+    num_moments : int|Callable[[float], int] = _num_moments_func,
+    photon_num_vec = [float(n) for n in np.linspace(0.0, 5.0, 21)][1:],
     num_code_states:int = 3,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00", "fidelity01", "fidelity00"
     noise_method : NoiseOptionLiteral = "kraus-KL-style",  # "simulated", "kraus" "kraus-channel"
-    γ = 1e-6
+    γ = 1e-4
 ) -> None:
     
     ## ========= Inputs =========:
     x_vec_name = "num_photons"
-    photon_num_vec  = np.linspace(1e-3, max_photon_num, num_photon_num).tolist()
-    photon_num_vec += np.linspace(5, 10, num_photon_num).tolist()
     γ_str = _latex_toggled_str(r'$\gamma$', '$γ$')
     # Format gamma for title (LaTeX math-mode if enabled) and for filenames (plain sci)
-    gamma_title_str = _format_float_for_title(γ, Globals.LaTeX_RENDERING)
-    gamma_file_str = _format_float_for_title(γ, False)
+    gamma_title_str = format_float_for_as_str(γ, Globals.LaTeX_RENDERING)
+    gamma_file_str = format_float_for_as_str(γ, False)
 
+
+    print(f"photon_num_vec = {photon_num_vec}")
 
     ## ========= Compute =========:
     per_code_results : dict[_CodeTypes, CostPerLegsPerNoiseDict] = dict()
 
-    for code in ProgressBar(["squeeze", "cat"], prefix="different code  "):
+    for code in ProgressBar(["squeeze", "cat", "binomial"], prefix="different code  "):
         code = type_cast(_CodeTypes, code)
         ProgressBar.newest().append_extra_str(f"code={code}")
 
@@ -864,14 +850,17 @@ def plot_full_codewords_numeric_figure_x_is_r(
         noise_method=noise_method,
         loss_basis="dual",
         dephasing_basis="main",
+        figure_name_prefix="x-is-nbar",
         figure_name_extra=f"num-particles - γ={gamma_file_str}",
         N=num_moments,
         x_scale = 'linear',
         figure_title=f"Noise rate {γ_str} = {gamma_title_str}"
     )
 
+    draw_now()
+    input("Press Enter to close the plots and end the program...")
 
 
 if __name__ == "__main__":
-    plot_full_codewords_numeric_figure_x_is_gamma()
-    # plot_full_codewords_numeric_figure_x_is_r()
+    # plot_full_codewords_numeric_figure_x_is_gamma()
+    plot_full_codewords_numeric_figure_x_is_nbar()
