@@ -804,7 +804,7 @@ def _num_moments_func(mean_n: float) -> int:
 
 def plot_full_codewords_numeric_figure_x_is_nbar(
     num_moments : int|Callable[[float], int] = _num_moments_func,
-    photon_num_vec = [float(n) for n in np.linspace(0.0, 5.0, 21)][1:],
+    photon_num_vec = [float(n) for n in np.linspace(0.0, 5.0, 41)],
     num_code_states:int = 3,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00", "fidelity01", "fidelity00"
     noise_method : NoiseOptionLiteral = "kraus-KL-style",  # "simulated", "kraus" "kraus-channel"
@@ -812,6 +812,7 @@ def plot_full_codewords_numeric_figure_x_is_nbar(
 ) -> None:
     
     ## ========= Inputs =========:
+    photon_num_vec = [n for n in photon_num_vec if n >= 1.0]
     x_vec_name = "num_photons"
     γ_str = _latex_toggled_str(r'$\gamma$', '$γ$')
     # Format gamma for title (LaTeX math-mode if enabled) and for filenames (plain sci)
@@ -848,8 +849,8 @@ def plot_full_codewords_numeric_figure_x_is_nbar(
         x_vec=photon_num_vec,
         measurement=measurement,
         noise_method=noise_method,
-        loss_basis="dual",
-        dephasing_basis="main",
+        loss_basis="main",
+        dephasing_basis="dual",
         figure_name_prefix="x-is-nbar",
         figure_name_extra=f"num-particles - γ={gamma_file_str}",
         N=num_moments,
