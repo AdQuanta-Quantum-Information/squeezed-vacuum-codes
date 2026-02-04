@@ -7,9 +7,10 @@ from matplotlib.lines import Line2D
 from matplotlib.text import Text
 from matplotlib.path import Path
 import matplotlib.patches as mpatches
+import matplotlib.transforms as mtransforms
 
 
-from typing import Literal, Callable
+from typing import Literal, Callable, TypeAlias
 from typing import cast as type_cast
 
 
@@ -35,6 +36,9 @@ if Globals.LaTeX_RENDERING:
     plt.rcParams['font.serif'] = ['Computer Modern Serif']
     plt.rcParams['text.latex.preamble'] = r'\usepackage{amsmath}'
 
+
+
+_NumMomentsFuncType : TypeAlias = Callable[[float], int]
 
 
 def _latex_toggled_str(latex_str:str, plain_str:str) -> str:
@@ -427,9 +431,12 @@ def _add_unified_legend_for_both_axes(
     fig: Figure,
     axes: dict[BosonicNoiseType, Axes],
     legend_colors: dict[str, dict[int, _RgbFloatTuple]],
+    legend_styles: dict[str, dict[int, str]] | None = None,
     linewidth: float = 3,
     vertical_plots: bool = True,
-    fontsize: int = 10
+    fontsize: int = 10,
+    x_shift: list[float] | None = None,
+    y_shift: float = -20
 ) -> None:
     """
     Add a unified legend for both axes showing codes and their m values.
@@ -452,41 +459,57 @@ def _add_unified_legend_for_both_axes(
     codes = list(legend_colors.keys())
     all_m = sorted(set().union(*(legend_colors[code].keys() for code in codes)))
     
-    # Build legend entries: header row + data rows
-    # Headers will be invisible, we'll add them manually later
-    handles: list[Line2D] = []
-    labels: list[str] = []
-    
-    header_indices = []
-    
-    # Header row: empty cell, then code names (will make invisible)
-    empty_handle = Line2D([], [], linestyle="none", marker="", markersize=0)
-    handles.append(empty_handle)
-    labels.append("")  # Empty label for top-left cell
-    header_indices.append(0)
-    
-    for idx, code in enumerate(codes, start=1):
-        code_header_handle = Line2D([], [], linestyle="none", marker="", markersize=0)
-        handles.append(code_header_handle)
-        labels.append("")  # Empty label - we'll add text manually
-        header_indices.append(idx)
-    
+    # Build table layout: header row (codes as columns), data rows (m as rows)
+    # Matplotlib legend fills entries column-major, so we build a row-major
+    # table first, then flatten it column-major.
+    ncol = len(codes) + 1  # +1 for m-value column
+    nrow = len(all_m) + 1  # +1 for header row
+
+    # Prepare x-shift for headers
+    if x_shift is None:
+        x_shift = [0.0] * len(codes)
+    elif len(x_shift) < len(codes):
+        x_shift = list(x_shift) + [0.0] * (len(codes) - len(x_shift))
+
+    # Row-major table
+    table_handles: list[list[Line2D]] = []
+    table_labels: list[list[str]] = []
+
+    # Header row: empty cell + (invisible) code headers
+    header_handles: list[Line2D] = [Line2D([], [], linestyle="none", marker="", markersize=0)]
+    header_labels: list[str] = [""]
+    for _ in codes:
+        header_handles.append(Line2D([], [], linestyle="none", marker="", markersize=0))
+        header_labels.append("")
+    table_handles.append(header_handles)
+    table_labels.append(header_labels)
+
     # Data rows: each m-value gets a row
     for m in all_m:
-        # First column: m value label
-        m_label_handle = Line2D([], [], linestyle="none", marker="", markersize=0)
-        handles.append(m_label_handle)
-        labels.append(str(m))
-        
-        # Subsequent columns: colored lines for each code
+        row_handles: list[Line2D] = [Line2D([], [], linestyle="none", marker="", markersize=0)]
+        row_labels: list[str] = [str(m)]
+
         for code in codes:
             if m in legend_colors[code]:
-                handles.append(Line2D([0], [0], color=legend_colors[code][m], linewidth=linewidth))
-                labels.append("")  # No label, just show the line
+                linestyle = "-"
+                if legend_styles is not None:
+                    linestyle = legend_styles.get(code, {}).get(m, "-")
+                row_handles.append(Line2D([0, 1], [0, 0], color=legend_colors[code][m], linewidth=linewidth, linestyle=linestyle))
+                row_labels.append("")
             else:
-                # Empty placeholder
-                handles.append(Line2D([], [], linestyle="none", alpha=0))
-                labels.append("")
+                row_handles.append(Line2D([], [], linestyle="none", alpha=0))
+                row_labels.append("")
+
+        table_handles.append(row_handles)
+        table_labels.append(row_labels)
+
+    # Flatten row-major table into column-major list for legend
+    handles: list[Line2D] = []
+    labels: list[str] = []
+    for c in range(ncol):
+        for r in range(nrow):
+            handles.append(table_handles[r][c])
+            labels.append(table_labels[r][c])
     
     # Position legend
     if vertical_plots:
@@ -495,8 +518,6 @@ def _add_unified_legend_for_both_axes(
     else:
         loc = "lower center"
         bbox_to_anchor = (0.5, -0.05)
-    
-    ncol = len(codes) + 1  # Number of columns = number of codes + 1 for m-value column
     
     legend = fig.legend(
         handles, labels,
@@ -511,6 +532,7 @@ def _add_unified_legend_for_both_axes(
     )
     
     # Make header row invisible (but keeps table structure)
+    header_indices = [c * nrow for c in range(ncol)]
     for idx in header_indices:
         legend.get_texts()[idx].set_alpha(0)
     
@@ -518,26 +540,28 @@ def _add_unified_legend_for_both_axes(
     fig.canvas.draw()  # Need to draw to get positions
     
     # Get positions of the header text elements to place our visible text
-    legend_handles = legend.legend_handles
     legend_texts = legend.get_texts()
-    
-    # X-shift values for fine-tuning header positions (in points)
-    x_shift = [0, 0, 0]  # One for each code: [squeeze, cat, binomial]
+    renderer = fig.canvas.get_renderer()
+    legend_bbox = legend.get_window_extent(renderer)
+    y_display = legend_bbox.y1 + (y_shift * fig.dpi / 72.0)
     
     # Add visible text for code headers positioned above their columns
     for i, code in enumerate(codes):
-        # Get the position of the invisible header text
+        # Get the position of the invisible header text (x from its bbox center)
         header_idx = header_indices[i + 1]  # +1 to skip empty cell
         header_text = legend_texts[header_idx]
-        
-        # Get its position
-        pos = header_text.get_position()
-        
-        # Create new visible text at same position
-        fig.text(pos[0] + x_shift[i]/72.0, pos[1], code, 
-                ha='center', va='center', 
-                fontsize=fontsize + 2, fontweight='bold',
-                transform=header_text.get_transform())
+        header_bbox = header_text.get_window_extent(renderer)
+        x_display = (header_bbox.x0 + header_bbox.x1) / 2.0
+        x_display += x_shift[i] * fig.dpi / 72.0
+
+        x_fig, y_fig = fig.transFigure.inverted().transform((x_display, y_display))
+
+        fig.text(
+            x_fig, y_fig, code,
+            ha='center', va='center',
+            fontsize=fontsize + 2, fontweight='bold',
+            transform=fig.transFigure
+        )
     
     return legend
         
@@ -558,7 +582,7 @@ def _plot_results(
     vertical_plots: bool = True,
     figure_name_prefix: str = "",
     figure_name_extra: str = "",
-    N: int|None = None,
+    N: int|_NumMomentsFuncType|None = None,
     _connected_plots:bool = True,
     _text_on_plots:bool = True,
     label_style: Literal["inline", "inline-adjusted", "legend"] = "legend",
@@ -566,7 +590,9 @@ def _plot_results(
     text_legend_on_plot_font_size:int = 12, # only used if _text_on_plots is True
     _adjust_ticks_font:bool = True,
     x_scale: Literal['linear', 'log'] = 'log',
-    figure_title: str = ""
+    figure_title: str = "",
+    _extra_legend_x_shift: list[float] | None = [-20, -20, -20],
+    _extra_legend_y_shift: float = -15.0
 ):
     """ Plot the results from compute_cost_on_logical_codewords(). """
 
@@ -588,6 +614,8 @@ def _plot_results(
     # _colors =  ["tab_blue", "tab_red"]
     _possible_colors =  ["blue", "red", 'green']
     _colors = _possible_colors[:len(codes)]
+    # line styles for different m values:
+    _line_styles = [':', '--', '-', '-.']
 
     ## ========= Plot =========:
     fig, axes = _axis_setup(
@@ -630,6 +658,7 @@ def _plot_results(
 
 
     legend_colors: dict[str, dict[int, _RgbFloatTuple]] = {code: {} for code in codes}
+    legend_styles: dict[str, dict[int, str]] = {code: {} for code in codes}
 
     plot_style = dict(
         linewidth = _linewidth
@@ -656,13 +685,15 @@ def _plot_results(
 
             for j, (m, costs) in enumerate(results.items()):
                 costs_per_noise = costs[noise_type]
+                line_style = _line_styles[j % len(_line_styles)]
                 y_vec = [costs[basis] for costs in costs_per_noise]
 
                 color = colors[j]
                 legend_colors[code][m] = color
+                legend_styles[code][m] = line_style
 
                 label = f"{m}"
-                ax.plot(x_vec, y_vec, label=label, color=color, **plot_style)  #type: ignore
+                ax.plot(x_vec, y_vec, label=label, color=color, linestyle=line_style, **plot_style)  #type: ignore
 
                 ## Handle inline labels
                 if label_style in ["inline", "inline-adjusted"]:
@@ -704,10 +735,13 @@ def _plot_results(
         legend = None
     elif label_style == "legend":
         legend = _add_unified_legend_for_both_axes(
-            fig, axes, legend_colors, 
+            fig, axes, legend_colors,
+            legend_styles=legend_styles,
             linewidth=_linewidth, 
             vertical_plots=vertical_plots,
-            fontsize=12
+            fontsize=12,
+            x_shift=_extra_legend_x_shift,
+            y_shift=_extra_legend_y_shift
         )
     else:
         raise ValueError(f"Unknown label_style: {label_style!r}")
@@ -740,7 +774,7 @@ def _plot_results(
         + (f" - N={N}" if isinstance(N, (int,float)) else "") \
         + (f" - {figure_name_extra}" if figure_name_extra else "") 
     
-    save_figure(plt.gcf(), file_name, dpi=fig_dpi, transparent=True, extensions=['pdf', 'png'])
+    save_figure(plt.gcf(), file_name, dpi=fig_dpi, transparent=True, extensions=['pdf', 'png', 'svg'])
     print("Saved.")
 
     return fig, axes, legend
@@ -787,6 +821,8 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
         x_vec=γ_vec,
         measurement=measurement,
         noise_method=noise_method,
+        figure_name_prefix="x-is-gamma",
+        figure_name_extra=f"n-bar={mean_photon_number}",
         N=num_moments,
         loss_basis="main",
         dephasing_basis="dual",
@@ -803,7 +839,7 @@ def _num_moments_func(mean_n: float) -> int:
 
 
 def plot_full_codewords_numeric_figure_x_is_nbar(
-    num_moments : int|Callable[[float], int] = _num_moments_func,
+    num_moments : int|_NumMomentsFuncType = _num_moments_func,
     photon_num_vec = [float(n) for n in np.linspace(0.0, 5.0, 41)],
     num_code_states:int = 3,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00", "fidelity01", "fidelity00"
@@ -852,10 +888,10 @@ def plot_full_codewords_numeric_figure_x_is_nbar(
         loss_basis="main",
         dephasing_basis="dual",
         figure_name_prefix="x-is-nbar",
-        figure_name_extra=f"num-particles - γ={gamma_file_str}",
+        figure_name_extra=f"γ={gamma_file_str}",
         N=num_moments,
         x_scale = 'linear',
-        figure_title=f"Noise rate {γ_str} = {gamma_title_str}"
+        # figure_title=f"Noise rate {γ_str} = {gamma_title_str}"
     )
 
     draw_now()
@@ -863,5 +899,7 @@ def plot_full_codewords_numeric_figure_x_is_nbar(
 
 
 if __name__ == "__main__":
-    # plot_full_codewords_numeric_figure_x_is_gamma()
+    plot_full_codewords_numeric_figure_x_is_gamma()
     plot_full_codewords_numeric_figure_x_is_nbar()
+    draw_now()
+    input("Press Enter to close the plots and end the program...")
