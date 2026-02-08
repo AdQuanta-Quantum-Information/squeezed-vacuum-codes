@@ -32,7 +32,7 @@ from src.utils.visuals import matplotlib_support
 from src.quantum.visualizations.wigner_function import plot_plain_wigner 
 
 
-NUM_MODES : Final[int] = 400
+NUM_MODES : Final[int] = 100
 
 qubit_0_proj = qt.basis(2, 0).proj()
 qubit_1_proj = qt.basis(2, 1).proj()
