@@ -240,7 +240,7 @@ def _axis_setup(
         if _connected_plots:
             raise ValueError("Connected plots only supported for vertical arrangement.")
         nrows, ncols = 1, 2
-        fig_size = (10,4)
+        fig_size = (10, 5.5)
 
     ## Plotting setup
     if fig_dpi is None:
@@ -434,11 +434,16 @@ def _add_unified_legend_for_both_axes(
     legend_styles: dict[str, dict[int, str]] | None = None,
     linewidth: float = 3,
     vertical_plots: bool = True,
-    fontsize: int = 10,
-    x_shift: list[float] | None = None,
-    y_shift: float = -20,
-    gkp_x_offset: float = 40.0,
+    fontsize: int = 12,
+    title_row_x_shifts: list[float] | None = [-20, -20, -20],
+    title_row_y_shift: float = -11.0,
+    gkp_x_offset: float = 30.0,
     gkp_y_offset: float = 0.0,
+    bg_padding_left: float = -65.0,
+    bg_padding_right: float = +1.0,
+    bg_padding_top: float = 0.0,
+    bg_padding_bottom: float = -10.0,
+    legend_y_offset: float = +0.08,
 ) -> None:
     """
     Add a unified legend for both axes showing codes and their m values.
@@ -465,7 +470,23 @@ def _add_unified_legend_for_both_axes(
     gkp_y_offset : float, optional
         Vertical offset (in points) of the GKP element relative to the
         vertical centre of the main legend table.  Positive = upward.
+    bg_padding_left : float, optional
+        Left padding (in display units) for the grey background.
+    bg_padding_right : float, optional
+        Right padding (in display units) for the grey background.
+    bg_padding_top : float, optional
+        Top padding (in display units) for the grey background.
+    bg_padding_bottom : float, optional
+        Bottom padding (in display units) for the grey background.
+    legend_y_offset : float, optional
+        Vertical offset to move the legend up (positive) or down (negative).
+        Default is 0.0. Typical values: 0.02-0.1 for small adjustments.
     """
+    ## Input control:
+    if vertical_plots:
+        legend_y_offset = 0
+
+
     codes = list(legend_colors.keys())
     if "gkp" in codes:
         with_gkp = True
@@ -482,10 +503,10 @@ def _add_unified_legend_for_both_axes(
     nrow = len(all_m) + 1  # +1 for header row
 
     # Prepare x-shift for headers
-    if x_shift is None:
-        x_shift = [0.0] * len(codes)
-    elif len(x_shift) < len(codes):
-        x_shift = list(x_shift) + [0.0] * (len(codes) - len(x_shift))
+    if title_row_x_shifts is None:
+        title_row_x_shifts = [0.0] * len(codes)
+    elif len(title_row_x_shifts) < len(codes):
+        title_row_x_shifts = list(title_row_x_shifts) + [0.0] * (len(codes) - len(title_row_x_shifts))
 
     # Row-major table
     table_handles: list[list[Line2D]] = []
@@ -530,10 +551,10 @@ def _add_unified_legend_for_both_axes(
     # Position legend
     if vertical_plots:
         loc = "lower center"
-        bbox_to_anchor = (0.5, 0.02)
+        bbox_to_anchor = (0.5, 0.02 + legend_y_offset)
     else:
         loc = "lower center"
-        bbox_to_anchor = (0.5, -0.05)
+        bbox_to_anchor = (0.5, -0.08 + legend_y_offset)
     
     legend = fig.legend(
         handles, labels,
@@ -541,7 +562,8 @@ def _add_unified_legend_for_both_axes(
         loc=loc,
         bbox_to_anchor=bbox_to_anchor,
         fontsize=fontsize + 2,
-        columnspacing=1.0,
+        columnspacing=0.7,
+        labelspacing=0.2,
         handletextpad=0.5,
         borderaxespad=0.5,
         frameon=False
@@ -559,7 +581,7 @@ def _add_unified_legend_for_both_axes(
     legend_texts = legend.get_texts()
     renderer = fig.canvas.get_renderer()
     legend_bbox = legend.get_window_extent(renderer)
-    y_display = legend_bbox.y1 + (y_shift * fig.dpi / 72.0)
+    y_display = legend_bbox.y1 + (title_row_y_shift * fig.dpi / 72.0)
     
     # Add visible text for code headers positioned above their columns
     for i, code in enumerate(codes):
@@ -568,7 +590,7 @@ def _add_unified_legend_for_both_axes(
         header_text = legend_texts[header_idx]
         header_bbox = header_text.get_window_extent(renderer)
         x_display = (header_bbox.x0 + header_bbox.x1) / 2.0
-        x_display += x_shift[i] * fig.dpi / 72.0
+        x_display += title_row_x_shifts[i] * fig.dpi / 72.0
 
         x_fig, y_fig = fig.transFigure.inverted().transform((x_display, y_display))
 
@@ -614,7 +636,8 @@ def _add_unified_legend_for_both_axes(
 
         # Colored line sample: draw a horizontal line at the centre
         # Make it longer so dash patterns are visible
-        line_half_len_fig = 0.05  # half-length in figure coords
+        # Shorter line for horizontal layout to avoid overlap
+        line_half_len_fig = 0.02 if not vertical_plots else 0.05  # half-length in figure coords
         line = Line2D(
             [gkp_x_fig - line_half_len_fig, gkp_x_fig + line_half_len_fig],
             [gkp_y_fig, gkp_y_fig],
@@ -623,6 +646,46 @@ def _add_unified_legend_for_both_axes(
             transform=fig.transFigure, clip_on=False
         )
         fig.add_artist(line)
+    
+    # Add grey background covering entire legend including GKP (horizontal layout only)
+    if not vertical_plots:
+        fig.canvas.draw()  # Ensure positions are updated
+        renderer = fig.canvas.get_renderer()
+        legend_bbox = legend.get_window_extent(renderer)
+        
+        # Determine the extent including GKP if present
+        if with_gkp and "gkp" in legend_colors:
+            # GKP extends to the right
+            gkp_right_x = gkp_x_display + line_half_len_fig * fig.dpi
+            left_x = legend_bbox.x0 - bg_padding_left
+            right_x = max(legend_bbox.x1, gkp_right_x) + bg_padding_right
+            top_y = legend_bbox.y1 + (title_row_y_shift * fig.dpi / 72.0) + bg_padding_top
+            bottom_y = legend_bbox.y0 - bg_padding_bottom
+        else:
+            left_x = legend_bbox.x0 - bg_padding_left
+            right_x = legend_bbox.x1 + bg_padding_right
+            top_y = legend_bbox.y1 + (title_row_y_shift * fig.dpi / 72.0) + bg_padding_top
+            bottom_y = legend_bbox.y0 - bg_padding_bottom
+        
+        # Convert to figure coordinates
+        left_fig, bottom_fig = fig.transFigure.inverted().transform((left_x, bottom_y))
+        right_fig, top_fig = fig.transFigure.inverted().transform((right_x, top_y))
+        
+        # Add background rectangle
+        from matplotlib.patches import FancyBboxPatch
+        bg_rect = FancyBboxPatch(
+            (left_fig, bottom_fig),
+            right_fig - left_fig,
+            top_fig - bottom_fig,
+            boxstyle="round,pad=0.02",
+            transform=fig.transFigure,
+            facecolor='lightgrey',
+            alpha=0.15,
+            edgecolor='darkgrey',
+            linewidth=1.8,
+            zorder=-1
+        )
+        fig.add_artist(bg_rect)
     
     return legend
         
@@ -640,22 +703,17 @@ def _plot_results(
     # defaults for plotting:
     grid: Literal["on", "off", "weak"] = "weak",
     fig_dpi: int = 500,
-    vertical_plots: bool = True,
+    vertical_plots: bool  = False,
+    _connected_plots:bool = False,
     figure_name_prefix: str = "",
     figure_name_extra: str = "",
     N: int|_NumMomentsFuncType|None = None,
-    _connected_plots:bool = True,
-    _text_on_plots:bool = True,
     label_style: Literal["inline", "inline-adjusted", "legend"] = "legend",
     text_font_size:int = 16,
     text_legend_on_plot_font_size:int = 12, # only used if _text_on_plots is True
     _adjust_ticks_font:bool = True,
     x_scale: Literal['linear', 'log'] = 'log',
     figure_title: str = "",
-    _extra_legend_x_shift: list[float] | None = [-20, -20, -20],
-    _extra_legend_y_shift: float = -15.0,
-    gkp_legend_x_offset: float = 40.0,
-    gkp_legend_y_offset: float = 0.0,
 ):
     """ Plot the results from compute_cost_on_logical_codewords(). """
 
@@ -811,12 +869,7 @@ def _plot_results(
             fig, axes, legend_colors,
             legend_styles=legend_styles,
             linewidth=_linewidth, 
-            vertical_plots=vertical_plots,
-            fontsize=12,
-            x_shift=_extra_legend_x_shift,
-            y_shift=_extra_legend_y_shift,
-            gkp_x_offset=gkp_legend_x_offset,
-            gkp_y_offset=gkp_legend_y_offset
+            vertical_plots=vertical_plots
         )
     else:
         raise ValueError(f"Unknown label_style: {label_style!r}")
@@ -847,7 +900,9 @@ def _plot_results(
         + measurement  \
         + f" - {noise_method}" \
         + (f" - N={N}" if isinstance(N, (int,float)) else "") \
-        + (f" - {figure_name_extra}" if figure_name_extra else "") 
+        + (f" - {figure_name_extra}" if figure_name_extra else "") \
+        + (f" - horizontal" if not vertical_plots else "") 
+    
     
     save_figure(plt.gcf(), file_name, dpi=fig_dpi, transparent=True, extensions=['pdf', 'png', 'svg'])
     print("Saved.")
