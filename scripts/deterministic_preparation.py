@@ -31,8 +31,17 @@ from matplotlib import pyplot as plt
 from src.utils.visuals import matplotlib_support
 from src.quantum.visualizations.wigner_function import plot_plain_wigner 
 
+from globals import Globals
 
-NUM_MODES : Final[int] = 100
+if Globals.LaTeX_RENDERING:
+    plt.rcParams['text.usetex'] = True
+    plt.rcParams['font.family'] = 'serif'
+    plt.rcParams['font.serif'] = ['Computer Modern Serif']
+    plt.rcParams['text.latex.preamble'] = r'\usepackage{amsmath}'
+
+
+
+NUM_MODES : Final[int] = 500
 
 qubit_0_proj = qt.basis(2, 0).proj()
 qubit_1_proj = qt.basis(2, 1).proj()
@@ -98,7 +107,7 @@ def _phase_for_iteration_k(k:int, m:int) -> float:
 
 def qubit_rotation(logical_info:LogicalCodewordInfo) -> qt.Qobj:
 	θ, φ = from_coefficients_to_angles(logical_info.a, logical_info.b)
-	qubit_rot = qubit_operations.rz(φ) @ qubit_operations.ry(θ)
+	qubit_rot = qubit_operations.ry(-θ) @ qubit_operations.rz(φ)
 	return qubit_rot
 
 
@@ -226,8 +235,14 @@ def Ry(θ:sp.Symbol|float) -> sp.Matrix|np.matrix:
 
 
 def from_angels_to_coefficients(θ:float, φ:float) -> tuple[complex, complex]:
-	a = np.cos(θ/2)
-	b = np.exp(1j*φ) * np.sin(θ/2)
+	if isinstance(θ, float|int):
+		a = np.cos(θ/2)
+		b = np.exp(1j*φ) * np.sin(θ/2)
+
+	elif isinstance(θ, sp.Expr):
+		a = sp.cos(θ/2)
+		b = sp.exp(1j*φ) * sp.sin(θ/2)
+
 	return a, b
 
 
@@ -267,10 +282,20 @@ def logical_codewords(m0:qt.Qobj, m1:qt.Qobj, logical_info:LogicalCodewordInfo) 
 	return c0, c1
 
 
+def _pretty_print_symbolic_coefficients(**kwargs):
+	for name, value in kwargs.items():
+		if isinstance(value, sp.Expr):
+			val = sp.simplify(sp.simplify(value))
+			val = sp.pretty(val)
+		else:
+			val = value
+		print(f"{name}:\n{val}")
+
+
 def compare_constructions(
 	m:int = 2,
 	r:float = 1.5,
-	θ:float = π/2,
+	θ:float = π/4,
 	φ:float = 0,
 	verbose:bool = False
 ) -> tuple[float, float]:
@@ -297,25 +322,70 @@ def compare_constructions(
 
 
 def test_construction(
-	m:int = 2,
-	θ:float = π/2,
+	m:int = 4,
+	θ:float = sp.pi/2,
 	φ:float = 0,
+	plus_state:bool = True
 ):
+
+	## assert inputs
+	if plus_state:
+		assert θ==sp.pi/2
+		assert φ==0.0
+
+	## requested state coefficients:
+	a, b = from_angels_to_coefficients(θ, φ)
+	θ, φ = float(θ), float(φ)
+	_pretty_print_symbolic_coefficients(a=a, b=b)
+
+
+	## Compute:
 	f1_vec = []
 	f2_vec = []
-	r_vec = np.linspace(1e-4, 10, 31).tolist()
+	r_vec = np.linspace(0.1, 3, 31).tolist()
 
 	for r in ProgressBar(r_vec):	
 		f1, f2 = compare_constructions(m=m, r=r, θ=θ, φ=φ)
 		f1_vec.append(f1)
 		f2_vec.append(f2)
 	
+
+
 	## Plot:
-	plt.plot(r_vec, f1_vec, label="f1")
-	plt.plot(r_vec, f2_vec, label="f2", linestyle="--")
-	plt.xlabel("r")
-	plt.ylabel("Fidelity")
-	plt.legend()
+	plot_kwargs = dict(
+		linewidth = 4
+	)
+	
+	if Globals.LaTeX_RENDERING:
+		fontsize_label = 16
+		fontsize_legend = 14
+		label1 = r"$\ell=1$"
+		label2 = r"$\ell=2$"
+		xlabel_text = r"$r$"
+		ylabel_text = r"Fidelity $|\langle \ell_L|\ell_g\rangle|^2$"
+		if plus_state:
+			ylabel_text = r"Fidelity $|\langle {+}_L|{+}_g\rangle|^2$"
+	else:
+		fontsize_label = None
+		fontsize_legend = None
+		label1 = "ℓ=1"
+		label2 = "ℓ=2"
+		xlabel_text = "r"
+		ylabel_text = "Fidelity |<ℓ_L|ℓ_g>|^2"
+		if plus_state:
+			ylabel_text = "Fidelity |<+_L|+_g>|^2"
+	
+	p1 = plt.plot(r_vec, f1_vec, label=label1, **plot_kwargs)
+	# p2 = plt.plot(r_vec, f2_vec, label=label2, **plot_kwargs)
+	plt.xlabel(xlabel_text, fontsize=fontsize_label)
+	plt.ylabel(ylabel_text, fontsize=fontsize_label)
+	
+	width = plt.gcf().get_figwidth()
+	height = plt.gcf().get_figheight() 
+	plt.gcf().set_size_inches(width, height*0.6)
+
+	plt.tight_layout()
+	# plt.legend(fontsize=fontsize_legend, loc="lower right")
 	plt.show()
 
 	print("Done.")
