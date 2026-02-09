@@ -415,7 +415,12 @@ def compute_cost_on_logical_codewords(
     noise_method : NoiseOptionLiteral = "kraus-KL-style"  # "simulated", "kraus"
 ) -> CostPerLegsPerNoiseDict:
     
-    num_legs_vec : list[int] = np.arange(2, 2+num_code_states*2, 2).tolist()  # even numbers from 2 to 2*num_code_states
+    if code == "gkp":
+        num_legs_vec : list[int] = [1]
+    else:
+        num_legs_vec : list[int] = np.arange(2, 2+num_code_states*2, 2).tolist()  # even numbers from 2 to 2*num_code_states
+
+
     costs_for_all_m: CostPerLegsPerNoiseDict = dict()
 
     ## ========= Compute stuff =========:
@@ -428,7 +433,7 @@ def compute_cost_on_logical_codewords(
             noise_type = type_cast(BosonicNoiseType, noise_type)
 
             cost_vec : list[CostPerLogicalBasis] = []
-            for x in ProgressBar(x_vec, prefix=f"different {x_name:5}"):      
+            for x in ProgressBar(x_vec, prefix=f"different {x_name:6}"):      
                 ProgressBar.newest().append_extra_str(f"{x_name}={x:.{PROG_BAR_SIGNIFICANT_DIGITS}g}")
 
                 r, γ, _num_moment = _get_parameters_from_fixed_and_x(

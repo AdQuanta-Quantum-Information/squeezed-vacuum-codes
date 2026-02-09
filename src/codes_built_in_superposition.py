@@ -13,16 +13,18 @@ if __name__ == "__main__":
 
 from src.utils.numerics import force_near_pure_complex
 from src.utils.prints import ProgressBar
+from src.utils.caches import cache
 
 from src.squeezing_direction import squeezing_direction_to_squeezing_phase
-from globals import Globals
 from src._numerics import π, exp
 
-from src.utils.caches import cache
+from src.gkp import gkp_from_nbar
+
+from globals import Globals
 
 
 from typing import TypeAlias, Literal, Generator, cast
-_CodeTypes : TypeAlias = Literal["cat", "squeeze", "binomial"]
+_CodeTypes : TypeAlias = Literal["cat", "squeeze", "binomial", "gkp"]
 
 
 if Globals.PRECISE:
@@ -81,6 +83,16 @@ def simple_m_legged_state(
             _force_normalized=_force_normalized,
             _prog_bar=_prog_bar
         )
+    
+    if code_type == "gkp":
+        assert m == 1, "If we got here with m not 1 for gkp code, this is a bug. (since it's not really an m-legged code)."
+        assert num_qudit_values == 2, "Number of qudit values must be exactly 2 for gkp code. No support for qudits yet."
+        return gkp_code_state(
+            b_nar=s, num_moments=num_moments, qubit_logical_value=qubit_logical_value,
+            _force_normalized=_force_normalized,
+            _prog_bar=_prog_bar
+        )
+
 
 
     m_vals = range(m)
@@ -169,7 +181,8 @@ def simple_m_legged_code(
     --------
     tuple[Qobj] : The normalized m-leg code states
     """
-    assert 1 <= num_digits <= m, "Need 1 ≤ num_digits ≤ m"
+    if code_type != "gkp":
+        assert 1 <= num_digits <= m, "Need 1 ≤ num_digits ≤ m"
 
     qudit_values = range(num_digits)
     if _prog_bar:
@@ -249,6 +262,27 @@ def binomial_code_state(
     return final_state
 
 
+def gkp_code_state(
+    b_nar: float,
+    num_moments: int,
+    qubit_logical_value: int = 0,
+    *,
+    _force_normalized: bool = True,
+    _prog_bar: bool = True
+) -> Qobj:
+    
+    gkp_state = gkp_from_nbar(
+        logical_value=qubit_logical_value,
+        N=num_moments,
+        nbar_target=b_nar,
+        return_meta=False,
+        _prog_bar=_prog_bar
+    )
+
+    if _force_normalized:
+        gkp_state.unit(inplace=True)
+
+    return gkp_state
 
 
 @cache(ram=True, disk=False)

@@ -362,6 +362,10 @@ def mean_photon_number_for_binomial_codeword(m:int, r:float, logical_value:int, 
     return float(numerical_value)
 
 
+def mean_photon_number_for_gkp_codeword(m:int, nbar:float, logical_value:int, analytic_substitution:bool=False) -> float:
+    return nbar  # currently, the input for the gkp code is the single-parameter n-bar
+
+
 @cache(ram=True, disk=True)
 def find_parameter_for_target_mean_photon_number(
     code_type:_CodeTypes,
@@ -416,6 +420,8 @@ def get_mean_photon_number(
             return mean_photon_number_for_squeezed_codeword(m, parameter, logical_value, analytic_substitution=analytic_substitution, L_cut_off=cut_off)
         case "binomial":
             return mean_photon_number_for_binomial_codeword(m, parameter, logical_value, analytic_substitution=analytic_substitution)
+        case "gkp":
+            return mean_photon_number_for_gkp_codeword(m, parameter, logical_value, analytic_substitution=analytic_substitution)
         case _:
             raise ValueError(f"Unknown code type: {code_type!r}")
 

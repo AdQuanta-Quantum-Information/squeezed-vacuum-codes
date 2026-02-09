@@ -1,3 +1,4 @@
+from typing import overload, Literal
 import qutip as qt
 
 import numpy as np
@@ -9,8 +10,10 @@ sqrt_pi = np.sqrt(np.pi)
 if __name__ == "__main__":
     from __init__ import add_root_to_path
     path = add_root_to_path()
-    from src.visualizations import plot_light_states, plot_fock_distribution
-    from src.utils.prints import ProgressBar
+
+from src.visualizations import plot_light_states, plot_fock_distribution
+from src.utils.prints import ProgressBar
+
 
 
 def gkp_params_from_nbar(
@@ -76,10 +79,10 @@ def recommended_N_from_nbar(nbar: float, safety: float = 8.0):
 
 
 def gkp_logical(
-    mu, N, Delta=0.2, kappa=0.2, s_max=None, ampl_cutoff=1e-12
+    logical_val, N, Delta=0.2, kappa=0.2, s_max=None, ampl_cutoff=1e-12, _prog_bar=True
 ):
     """
-    Approximate square-lattice GKP logical |mu> (mu=0 or 1) in truncated Fock basis.
+    Approximate square-lattice GKP logical |logical_val> (logical_val=0 or 1) in truncated Fock basis.
 
     Conventions:
       [q,p]=i, a=(q+ip)/sqrt(2).
@@ -87,7 +90,7 @@ def gkp_logical(
       Each peak has q-stddev Delta (Var(q)=Delta^2).
       Envelope weights exp[-(kappa*q_s)^2/2].
     """
-    if mu not in (0, 1):
+    if logical_val not in (0, 1):
         raise ValueError("mu must be 0 or 1.")
 
     r = np.log(1.0 / (np.sqrt(2.0) * Delta))
@@ -96,27 +99,38 @@ def gkp_logical(
 
     if s_max is None:
         mmax = np.sqrt(2.0 * np.log(1.0 / ampl_cutoff)) / (kappa * np.sqrt(np.pi))
-        s_max = int(np.ceil((mmax - mu) / 2.0))
+        s_max = int(np.ceil((mmax - logical_val) / 2.0))
         s_max = max(s_max, 1)
 
     psi = 0 * peak_state
-    for s in range(-s_max, s_max + 1):
-        q_s = (2 * s + mu) * sqrt_pi
+    if _prog_bar:
+        s_values = ProgressBar(range(-s_max, s_max + 1), prefix=f"building |{logical_val}_L⟩  ", expected_end=s_max*2+1)
+    else:
+        s_values = range(-s_max, s_max + 1)
+
+    for s in s_values:
+        q_s = (2 * s + logical_val) * sqrt_pi
         weight = np.exp(-0.5 * (kappa * q_s) ** 2)
         alpha = q_s / np.sqrt(2.0)  # because dq = sqrt(2) * Re(alpha)
         psi += weight * (qt.displace(N, alpha) @ peak_state)
 
-    return psi.unit()
+    # return psi.unit()
+    return psi  # not, final state is not normalized
 
 
+@overload
+def gkp_from_nbar(*args, return_meta: Literal[True] = ..., **kwargs) -> tuple[qt.Qobj, dict]: ...
+@overload
+def gkp_from_nbar(*args, return_meta: Literal[False], **kwargs) -> qt.Qobj: ...
 def gkp_from_nbar(
-    mu: int,
+    logical_value: int,
     N: int,
     nbar_target: float,
     ratio_kappa_over_Delta: float = 1.0,
     ampl_cutoff: float = 1e-12,
     return_meta: bool = True,
-):
+    _prog_bar: bool = True,
+) -> qt.Qobj | tuple[qt.Qobj, dict]:
     """
     Build an approximate GKP logical state using only nbar_target (plus mu, N).
 
@@ -131,7 +145,7 @@ def gkp_from_nbar(
         nbar_target, ratio_kappa_over_Delta=ratio_kappa_over_Delta, ampl_cutoff=ampl_cutoff
     )
 
-    psi = gkp_logical(mu, N, Delta=Delta, kappa=kappa, s_max=s_max, ampl_cutoff=ampl_cutoff)
+    psi = gkp_logical(logical_value, N, Delta=Delta, kappa=kappa, s_max=s_max, ampl_cutoff=ampl_cutoff, _prog_bar=_prog_bar)
 
     if not return_meta:
         return psi
@@ -158,8 +172,8 @@ def _gkp_test_single(
     verbose:bool = True,
 
 ):
-    psi0, meta0 = gkp_from_nbar(mu=0, N=N, nbar_target=nbar)
-    psi1, meta1 = gkp_from_nbar(mu=1, N=N, nbar_target=nbar)
+    psi0, meta0 = gkp_from_nbar(logical_value=0, N=N, nbar_target=nbar)
+    psi1, meta1 = gkp_from_nbar(logical_value=1, N=N, nbar_target=nbar)
 
     overlap = psi0.overlap(psi1)  # should be small for good GKP approx
 

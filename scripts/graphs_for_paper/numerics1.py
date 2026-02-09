@@ -436,10 +436,14 @@ def _add_unified_legend_for_both_axes(
     vertical_plots: bool = True,
     fontsize: int = 10,
     x_shift: list[float] | None = None,
-    y_shift: float = -20
+    y_shift: float = -20,
+    gkp_x_offset: float = 40.0,
+    gkp_y_offset: float = 0.0,
 ) -> None:
     """
     Add a unified legend for both axes showing codes and their m values.
+    GKP (which has no m) is placed as a separate element to the right of
+    the main table, with position controlled by gkp_x_offset / gkp_y_offset.
     
     Parameters
     ----------
@@ -455,8 +459,20 @@ def _add_unified_legend_for_both_axes(
         Whether plots are arranged vertically.
     fontsize : int, optional
         Font size for legend text.
+    gkp_x_offset : float, optional
+        Horizontal offset (in points) of the GKP element from the right
+        edge of the main legend table.  Positive = further right.
+    gkp_y_offset : float, optional
+        Vertical offset (in points) of the GKP element relative to the
+        vertical centre of the main legend table.  Positive = upward.
     """
     codes = list(legend_colors.keys())
+    if "gkp" in codes:
+        with_gkp = True
+        codes.remove("gkp")
+    else:
+        with_gkp = False
+        
     all_m = sorted(set().union(*(legend_colors[code].keys() for code in codes)))
     
     # Build table layout: header row (codes as columns), data rows (m as rows)
@@ -563,6 +579,51 @@ def _add_unified_legend_for_both_axes(
             transform=fig.transFigure
         )
     
+    # ---- GKP: separate element to the right of the main legend ----
+    if with_gkp and "gkp" in legend_colors:
+        gkp_data = legend_colors["gkp"]
+        gkp_m = list(gkp_data.keys())[0]       # single entry
+        gkp_color = gkp_data[gkp_m]
+        gkp_linestyle = "-"
+        if legend_styles is not None and "gkp" in legend_styles:
+            gkp_linestyle = list(legend_styles["gkp"].values())[0]
+
+        # Reference point: right edge, vertical centre of the main legend
+        legend_bbox = legend.get_window_extent(renderer)
+        gkp_x_display = legend_bbox.x1 + gkp_x_offset * fig.dpi / 72.0
+        gkp_y_center  = (legend_bbox.y0 + legend_bbox.y1) / 2.0 + gkp_y_offset * fig.dpi / 72.0
+
+        # Convert to figure coordinates
+        gkp_x_fig, gkp_y_fig = fig.transFigure.inverted().transform(
+            (gkp_x_display, gkp_y_center)
+        )
+
+        # Draw the line sample using fig.axes trick: place a small legend-like
+        # annotation consisting of a header text + a colored line below it.
+        # Header ("gkp") — aligned with the other headers' y-level
+        header_y_fig = fig.transFigure.inverted().transform(
+            (gkp_x_display, y_display)
+        )[1]
+
+        fig.text(
+            gkp_x_fig, header_y_fig, "gkp",
+            ha='center', va='center',
+            fontsize=fontsize + 2, fontweight='bold',
+            transform=fig.transFigure
+        )
+
+        # Colored line sample: draw a horizontal line at the centre
+        # Make it longer so dash patterns are visible
+        line_half_len_fig = 0.05  # half-length in figure coords
+        line = Line2D(
+            [gkp_x_fig - line_half_len_fig, gkp_x_fig + line_half_len_fig],
+            [gkp_y_fig, gkp_y_fig],
+            color=gkp_color, linewidth=linewidth,
+            linestyle=gkp_linestyle,
+            transform=fig.transFigure, clip_on=False
+        )
+        fig.add_artist(line)
+    
     return legend
         
 
@@ -592,7 +653,9 @@ def _plot_results(
     x_scale: Literal['linear', 'log'] = 'log',
     figure_title: str = "",
     _extra_legend_x_shift: list[float] | None = [-20, -20, -20],
-    _extra_legend_y_shift: float = -15.0
+    _extra_legend_y_shift: float = -15.0,
+    gkp_legend_x_offset: float = 40.0,
+    gkp_legend_y_offset: float = 0.0,
 ):
     """ Plot the results from compute_cost_on_logical_codewords(). """
 
@@ -612,7 +675,7 @@ def _plot_results(
     ## ========= Constants =========:
     _linewidth = 3
     # _colors =  ["tab_blue", "tab_red"]
-    _possible_colors =  ["blue", "red", 'green']
+    _possible_colors =  ["blue", "red", 'green', 'gold']
     _colors = _possible_colors[:len(codes)]
     # line styles for different m values:
     _line_styles = [':', '--', '-', '-.']
@@ -625,11 +688,11 @@ def _plot_results(
     )
     match x_vec_name:
         case "γ":
-            xlabel = _latex_toggled_str(r"$\gamma$", "γ")+" noise rate"
+            xlabel = "noise rate "+_latex_toggled_str(r"$\gamma$", "γ")
         case "r":
             xlabel = r'$r (%s)$ squeezing (displacement) strength'%(_latex_toggled_str(r'\alpha', 'α'))
         case "num_photons":
-            xlabel = _latex_toggled_str(r'$\bar{n}$', 'n') +" (mean number)"
+            xlabel = "mean number "+_latex_toggled_str(r'$\bar{n}$', 'n')
     # Loss plot:
     y_label = _ylabel_for_measurement(measurement, noise_method, code_basis=loss_basis, noise="loss")
     axes["loss"].set_xlabel(xlabel , fontsize=text_font_size)
@@ -674,7 +737,12 @@ def _plot_results(
         code = type_cast(_CodeTypes, code)
         results = per_code_results[code]
         num_m = len(results)
-        colors = color_shades(base_color, num_m+1)[:-1]  # Skip the darkest color
+
+
+        if code=="gkp":
+            colors = [base_color]
+        else:
+            colors = color_shades(base_color, num_m+1)[:-1]  # Skip the darkest color
 
         for noise_type, ax in axes.items():
             noise_type = type_cast(BosonicNoiseType, noise_type)
@@ -685,7 +753,12 @@ def _plot_results(
 
             for j, (m, costs) in enumerate(results.items()):
                 costs_per_noise = costs[noise_type]
-                line_style = _line_styles[j % len(_line_styles)]
+
+                if code=="gkp":
+                    line_style = "-."
+                else:
+                    line_style = _line_styles[j % len(_line_styles)]
+
                 y_vec = [costs[basis] for costs in costs_per_noise]
 
                 color = colors[j]
@@ -741,7 +814,9 @@ def _plot_results(
             vertical_plots=vertical_plots,
             fontsize=12,
             x_shift=_extra_legend_x_shift,
-            y_shift=_extra_legend_y_shift
+            y_shift=_extra_legend_y_shift,
+            gkp_x_offset=gkp_legend_x_offset,
+            gkp_y_offset=gkp_legend_y_offset
         )
     else:
         raise ValueError(f"Unknown label_style: {label_style!r}")
@@ -784,6 +859,7 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
     num_moments : int = 100,
     num_gammas:int = 5,
     num_code_states:int = 3,
+    with_gkp:bool = True,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00"
     noise_method : NoiseOptionLiteral = "kraus-KL-style",  # "simulated", "kraus-KL-style", "kraus-channel"
     mean_photon_number : float = 2.0
@@ -791,15 +867,21 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
 
     ## ========= Inputs =========:
     x_vec_name = "γ"
-
     γ_vec = np.logspace(-7, -3, num_gammas).tolist()
+    if with_gkp:
+        codes = ["squeeze", "cat", "binomial", "gkp"]
+    else:
+        codes = ["squeeze", "cat", "binomial"]
 
     ## ========= Compute =========:
     per_code_results : dict[_CodeTypes, CostPerLegsPerNoiseDict] = dict()
 
-    for code in ProgressBar(["squeeze", "cat", "binomial"], prefix="different code  "):
+    for code in ProgressBar(codes, prefix="different code  "):
         ProgressBar.newest().append_extra_str(f"{code!r}")
         code = type_cast(_CodeTypes, code)
+
+        if code=="gkp": 
+            num_code_states = 1
 
         results = compute_cost_on_logical_codewords(
             fixed_value=mean_photon_number,
@@ -825,12 +907,12 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
         figure_name_extra=f"n-bar={mean_photon_number}",
         N=num_moments,
         loss_basis="main",
-        dephasing_basis="dual",
+        dephasing_basis="dual"
     )
 
     ## Wait for user to close:
     draw_now()
-    input("Press Enter to close the plots and end the program...")
+    # input("Press Enter to close the plots and end the program...")
 
 
 def _num_moments_func(mean_n: float) -> int:
@@ -861,9 +943,12 @@ def plot_full_codewords_numeric_figure_x_is_nbar(
     ## ========= Compute =========:
     per_code_results : dict[_CodeTypes, CostPerLegsPerNoiseDict] = dict()
 
-    for code in ProgressBar(["squeeze", "cat", "binomial"], prefix="different code  "):
+    for code in ProgressBar(["squeeze", "cat", "binomial", "gkp"], prefix="different code  "):
         code = type_cast(_CodeTypes, code)
         ProgressBar.newest().append_extra_str(f"code={code}")
+
+        if code=="gkp": 
+            num_code_states = 1
 
         results = compute_cost_on_logical_codewords(
             fixed_param_name="γ",
@@ -895,7 +980,7 @@ def plot_full_codewords_numeric_figure_x_is_nbar(
     )
 
     draw_now()
-    input("Press Enter to close the plots and end the program...")
+    # input("Press Enter to close the plots and end the program...")
 
 
 if __name__ == "__main__":
