@@ -972,12 +972,12 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
 
 def _num_moments_func(mean_n: float) -> int:
     """Determine number of moments based on mean photon number."""
-    return 50*int(np.ceil(mean_n))
+    return int(np.ceil(75*mean_n))
 
 
 def plot_full_codewords_numeric_figure_x_is_nbar(
     num_moments : int|_NumMomentsFuncType = _num_moments_func,
-    photon_num_vec = [float(n) for n in np.linspace(0.0, 5.0, 41)],
+    photon_num_vec = [float(n) for n in np.linspace(0.0, 10.0, 41)],
     num_code_states:int = 3,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00", "fidelity01", "fidelity00"
     noise_method : NoiseOptionLiteral = "kraus-KL-style",  # "simulated", "kraus" "kraus-channel"
@@ -1039,7 +1039,7 @@ def plot_full_codewords_numeric_figure_x_is_nbar(
 
 
 if __name__ == "__main__":
-    plot_full_codewords_numeric_figure_x_is_gamma()
+    # plot_full_codewords_numeric_figure_x_is_gamma()
     plot_full_codewords_numeric_figure_x_is_nbar()
     draw_now()
     input("Press Enter to close the plots and end the program...")

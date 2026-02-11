@@ -16,37 +16,21 @@ if __name__ == "__main__":
 
 ## our supporting modules:
 from src.utils import assertions
-from src.utils.prints import ProgressBar
 
 ## This project:
 from src.squeezing_direction import squeezing_direction_to_squeezing_phase
-from src.codes_built_in_superposition import simple_m_legged_code
-from src.measurements import measure_qubit_state, _MeasureStats
 from src.visualizations import plot_light_states
-from src.analytical_expressions import fock_rep_of_squeezed_vacuum_in_direction
 from src.rotation import rotation
-
-## Visuals:
-from matplotlib import pyplot as plt
-from src.utils.visuals import matplotlib_support
-from src.quantum.visualizations.wigner_function import plot_plain_wigner 
-
-from globals import Globals
-
-if Globals.LaTeX_RENDERING:
-    plt.rcParams['text.usetex'] = True
-    plt.rcParams['font.family'] = 'serif'
-    plt.rcParams['font.serif'] = ['Computer Modern Serif']
-    plt.rcParams['text.latex.preamble'] = r'\usepackage{amsmath}'
+from src.measurements import measure_qubit_state, _MeasureStats
 
 
 
-NUM_MODES : Final[int] = 500
+
+DEFAULT_NUM_MOMENTS : Final[int] = 100
 
 qubit_0_proj = qt.basis(2, 0).proj()
 qubit_1_proj = qt.basis(2, 1).proj()
 
-I_light = qt.qeye(NUM_MODES)
 H = qt.Qobj([[1, 1], [1, -1]]) / sqrt2
 
 
@@ -68,17 +52,20 @@ def _is_power_of_2(n:int) -> bool:
 	return _is_integer(np.log2(n))
 
 
-def rot(θ:float) -> qt.Qobj:
-	return rotation(NUM_MODES, θ)
+def rot(θ:float, num_moments:int = DEFAULT_NUM_MOMENTS) -> qt.Qobj:
+	return rotation(num_moments, θ)
 
 
-def conditional_rotation_2_angles(θ0:float, θ1:float) -> qt.Qobj:
-	return qt.tensor(qubit_0_proj, rot(θ0)) + qt.tensor(qubit_1_proj, rot(θ1))
+def conditional_rotation_2_angles(θ0:float, θ1:float, num_moments:int = DEFAULT_NUM_MOMENTS) -> qt.Qobj:
+	def rot_(θ:float) -> qt.Qobj:
+		return rot(θ, num_moments=num_moments)
+	return qt.tensor(qubit_0_proj, rot_(θ0)) + qt.tensor(qubit_1_proj, rot_(θ1))
 
 
-def conditional_rotation_1_angle(θ:float, ϕ:float=0.0) -> qt.Qobj:
+def conditional_rotation_1_angle(θ:float, ϕ:float=0.0, num_moments:int = DEFAULT_NUM_MOMENTS) -> qt.Qobj:
 	phase = np.exp(1j*ϕ)
-	return qt.tensor(qubit_0_proj, I_light) + phase * qt.tensor(qubit_1_proj, rot(θ))
+	I_light = qt.qeye(num_moments)
+	return qt.tensor(qubit_0_proj, I_light) + phase * qt.tensor(qubit_1_proj, rot(θ, num_moments=num_moments))
 
 
 def measure_qubit_and_get_light(ψ: qt.Qobj) -> list[qt.Qobj]:
@@ -111,14 +98,15 @@ def qubit_rotation(logical_info:LogicalCodewordInfo) -> qt.Qobj:
 	return qubit_rot
 
 
-def _iter_sequence(ψ_light: qt.Qobj, θ:float, measurement_basis:LogicalCodewordInfo) -> tuple[qt.Qobj, ...]:
+def _iter_sequence(ψ_light: qt.Qobj, θ:float, measurement_basis:LogicalCodewordInfo, num_moments:int = DEFAULT_NUM_MOMENTS) -> tuple[qt.Qobj, ...]:
 	## Init qubit in |0⟩
 	qubit = qt.basis(2, 0)
 	ψ = qt.tensor(qubit, ψ_light)
+	I_light = qt.qeye(num_moments)
 
 	## H⊗I --- C-Rot ---  H⊗I:
 	ψ = qt.tensor(H, I_light) @ ψ
-	ψ = conditional_rotation_1_angle(θ) @ ψ
+	ψ = conditional_rotation_1_angle(θ, num_moments=num_moments) @ ψ
 	ψ = qt.tensor(H, I_light) @ ψ
 
 	## Qubit rotation:
@@ -131,13 +119,13 @@ def _iter_sequence(ψ_light: qt.Qobj, θ:float, measurement_basis:LogicalCodewor
 	return ψ_light_0, ψ_light_1
 
 
-def get_code_states_using_rotation_log2_m(m:int, r:float, logical_info:LogicalCodewordInfo) -> tuple[qt.Qobj, ...]: 
+def get_code_states_using_rotation_log2_m(m:int, r:float, logical_info:LogicalCodewordInfo, num_moments:int = DEFAULT_NUM_MOMENTS) -> tuple[qt.Qobj, ...]: 
 
 	k = assertions.integer(np.log2(m), reason=f"`m` must be an integer power of 2, such that m=2^k for some k. Got {m!r}")
 
-	vacuum_state = qt.basis(NUM_MODES, 0)
+	vacuum_state = qt.basis(num_moments, 0)
 	ϕ0 = squeezing_direction_to_squeezing_phase(0)
-	ψ_light = qt.squeeze(NUM_MODES, r * ϕ0) @ vacuum_state
+	ψ_light = qt.squeeze(num_moments, r * ϕ0) @ vacuum_state
 
 	for i in range(k):
 		is_final = i == k - 1
@@ -146,7 +134,7 @@ def get_code_states_using_rotation_log2_m(m:int, r:float, logical_info:LogicalCo
 		θ = π * (1/2)**(i+1) 
 		
 		measurement_basis = logical_info if is_final else LogicalCodewordInfo()
-		ψ_light, ψ_light_second_option = _iter_sequence(ψ_light, θ, measurement_basis=measurement_basis)
+		ψ_light, ψ_light_second_option = _iter_sequence(ψ_light, θ, measurement_basis=measurement_basis, num_moments=num_moments)
 
 
 		if False=="False":
@@ -156,10 +144,11 @@ def get_code_states_using_rotation_log2_m(m:int, r:float, logical_info:LogicalCo
 	return ψ_light, ψ_light_second_option
 
 
-def _create_positive_m_legged_superposition(m:int, r:float) -> qt.Qobj:
-	vacuum_state = qt.basis(NUM_MODES, 0)
+def _create_positive_m_legged_superposition(m:int, r:float, num_moments:int = DEFAULT_NUM_MOMENTS) -> qt.Qobj:
+	vacuum_state = qt.basis(num_moments, 0)
 	ϕ0 = squeezing_direction_to_squeezing_phase(0)
-	ψ_light = qt.squeeze(NUM_MODES, r * ϕ0) @ vacuum_state
+	ψ_light = qt.squeeze(num_moments, r * ϕ0) @ vacuum_state
+	I_light = qt.qeye(num_moments)
 	θ = 2*π / m
 
 
@@ -167,7 +156,7 @@ def _create_positive_m_legged_superposition(m:int, r:float) -> qt.Qobj:
 		## This iteration operators:
 		ϕ = _phase_for_iteration_k(k, m)
 		HoI = qt.tensor(H, I_light)
-		C_Rot = conditional_rotation_1_angle(θ, ϕ)
+		C_Rot = conditional_rotation_1_angle(θ, ϕ, num_moments=num_moments)
 		iter_op = HoI @ C_Rot @ HoI
 
 		## State before measurement
@@ -184,14 +173,14 @@ def _create_positive_m_legged_superposition(m:int, r:float) -> qt.Qobj:
 	return ψ_light
 
 
-def get_code_states_using_rotation_even(m:int, r:float, logical_info:LogicalCodewordInfo) -> tuple[qt.Qobj, ...]:
+def get_code_states_using_rotation_even(m:int, r:float, logical_info:LogicalCodewordInfo, num_moments:int = DEFAULT_NUM_MOMENTS) -> tuple[qt.Qobj, ...]:
 	m = assertions.even(m, reason="`m` must be an even integer")
 	half_m = m // 2
 
-	ψ_light = _create_positive_m_legged_superposition(half_m, r)
+	ψ_light = _create_positive_m_legged_superposition(half_m, r, num_moments=num_moments)
 
 	θ = π/m
-	ψ_light1, ψ_light2 =_iter_sequence(ψ_light, θ)
+	ψ_light1, ψ_light2 =_iter_sequence(ψ_light, θ, measurement_basis=logical_info, num_moments=num_moments)
 
 	# plot_light_states([ψ_light1, ψ_light2])
 
@@ -199,16 +188,16 @@ def get_code_states_using_rotation_even(m:int, r:float, logical_info:LogicalCode
 
 
 
-def get_code_states_using_rotation(m:int, r:float, logical_info:LogicalCodewordInfo) -> tuple[qt.Qobj, ...]:
+def get_code_states_using_rotation(m:int, r:float, logical_info:LogicalCodewordInfo, num_moments:int = DEFAULT_NUM_MOMENTS) -> tuple[qt.Qobj, ...]:
 	
 
 	## If m=2^k
 	if _is_power_of_2(m):
-		return get_code_states_using_rotation_log2_m(m, r, logical_info=logical_info)
+		return get_code_states_using_rotation_log2_m(m, r, logical_info=logical_info, num_moments=num_moments)
 	
 	## if m is even
 	elif _is_even(m):
-		return get_code_states_using_rotation_even(m, r, logical_info=logical_info)
+		return get_code_states_using_rotation_even(m, r, logical_info=logical_info, num_moments=num_moments)
 
 	## if m is odd:
 	else:
@@ -267,130 +256,3 @@ def arbitrary_logical_state_test(
 	|ψ⟩ = cos(θ/2)|0⟩ + e^{iφ} sin(θ/2)|1⟩
 	"""
 	a, b = from_angels_to_coefficients(θ, φ)	
-
-
-def logical_codewords(m0:qt.Qobj, m1:qt.Qobj, logical_info:LogicalCodewordInfo) -> tuple[qt.Qobj, qt.Qobj]:
-	""" Turn the logical |0⟩, |1⟩ states into the desired logical superposition based on the provided logical_info. """
-	a = logical_info.a
-	b = logical_info.b
-	c0 = a * m0 + b * m1
-	
-	## C1 state is the orthogonal state to c0:
-	c1 = -b.conjugate() * m0 + a.conjugate() * m1
-	assert np.isclose(c0.overlap(c1), 0.0)
-
-	return c0, c1
-
-
-def _pretty_print_symbolic_coefficients(**kwargs):
-	for name, value in kwargs.items():
-		if isinstance(value, sp.Expr):
-			val = sp.simplify(sp.simplify(value))
-			val = sp.pretty(val)
-		else:
-			val = value
-		print(f"{name}:\n{val}")
-
-
-def compare_constructions(
-	m:int = 2,
-	r:float = 1.5,
-	θ:float = π/4,
-	φ:float = 0,
-	verbose:bool = False
-) -> tuple[float, float]:
-	
-	## Get states:
-	a, b = from_angels_to_coefficients(θ, φ)
-	logical_info = LogicalCodewordInfo(a=a, b=b)
-	ψ0, ψ1 = get_code_states_using_rotation(m, r, logical_info=logical_info)
-
-	## Compare with simple construction:
-	m0, m1 = simple_m_legged_code(m, r, num_moments=NUM_MODES, code_type="squeeze")
-	c0, c1 = logical_codewords(m0, m1, logical_info)
-
-	f1 = float(qt.metrics.fidelity(ψ0, c0))
-	f2 = float(qt.metrics.fidelity(ψ1, c1))
-
-	if verbose:
-		plot_light_states([ψ0, ψ1])
-		plot_light_states([c0, c1])
-		print(f"fidelity = {[f1, f2]}")
-		print("Done.")
-
-	return f1, f2
-
-
-def test_construction(
-	m:int = 4,
-	θ:float = sp.pi/2,
-	φ:float = 0,
-	plus_state:bool = True
-):
-
-	## assert inputs
-	if plus_state:
-		assert θ==sp.pi/2
-		assert φ==0.0
-
-	## requested state coefficients:
-	a, b = from_angels_to_coefficients(θ, φ)
-	θ, φ = float(θ), float(φ)
-	_pretty_print_symbolic_coefficients(a=a, b=b)
-
-
-	## Compute:
-	f1_vec = []
-	f2_vec = []
-	r_vec = np.linspace(0.1, 3, 31).tolist()
-
-	for r in ProgressBar(r_vec):	
-		f1, f2 = compare_constructions(m=m, r=r, θ=θ, φ=φ)
-		f1_vec.append(f1)
-		f2_vec.append(f2)
-	
-
-
-	## Plot:
-	plot_kwargs = dict(
-		linewidth = 4
-	)
-	
-	if Globals.LaTeX_RENDERING:
-		fontsize_label = 16
-		fontsize_legend = 14
-		label1 = r"$\ell=1$"
-		label2 = r"$\ell=2$"
-		xlabel_text = r"$r$"
-		ylabel_text = r"Fidelity $|\langle \ell_L|\ell_g\rangle|^2$"
-		if plus_state:
-			ylabel_text = r"Fidelity $|\langle {+}_L|{+}_g\rangle|^2$"
-	else:
-		fontsize_label = None
-		fontsize_legend = None
-		label1 = "ℓ=1"
-		label2 = "ℓ=2"
-		xlabel_text = "r"
-		ylabel_text = "Fidelity |<ℓ_L|ℓ_g>|^2"
-		if plus_state:
-			ylabel_text = "Fidelity |<+_L|+_g>|^2"
-	
-	p1 = plt.plot(r_vec, f1_vec, label=label1, **plot_kwargs)
-	# p2 = plt.plot(r_vec, f2_vec, label=label2, **plot_kwargs)
-	plt.xlabel(xlabel_text, fontsize=fontsize_label)
-	plt.ylabel(ylabel_text, fontsize=fontsize_label)
-	
-	width = plt.gcf().get_figwidth()
-	height = plt.gcf().get_figheight() 
-	plt.gcf().set_size_inches(width, height*0.6)
-
-	plt.tight_layout()
-	# plt.legend(fontsize=fontsize_legend, loc="lower right")
-	plt.show()
-
-	print("Done.")
-
-
-if __name__ == "__main__":
-	# compare_constructions(verbose=True)
-	test_construction()
