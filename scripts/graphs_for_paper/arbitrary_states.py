@@ -14,6 +14,7 @@ if __name__ == "__main__":
     path = add_root_to_path()
 	
 from src.utils.prints import ProgressBar
+from src.utils.visuals.matplotlib_support import save_figure, draw_now
 
 from src.codes_built_in_superposition import simple_m_legged_code
 from src.visualizations import plot_light_states
@@ -93,8 +94,9 @@ def compare_constructions(
 
 
 def plot_construction_prob(
-	num_moments:int = 20,
-	m_vals:list[int] = [2,4,6],
+	num_moments:int = 500,
+	m_vals:list[int] = [2, 4, 6],
+    r_vec = np.linspace(0.1, 3, 31).tolist(),
 	θ:float = sp.pi/2,
 	φ:float = 0,
 	plus_state:bool = True
@@ -112,7 +114,6 @@ def plot_construction_prob(
 
 
     ## Compute:
-    r_vec = np.linspace(0.1, 3, 11).tolist()
     per_m_results : dict[int, list[float]] = dict()
 
     for m in ProgressBar(m_vals, prefix="m: "):
@@ -129,12 +130,12 @@ def plot_construction_prob(
 
     ## Styled fonts:
     plot_kwargs = dict(
-        linewidth = 4
+        linewidth = 3
 	)
 	
     if Globals.LaTeX_RENDERING:
         fontsize_label = 16
-        fontsize_legend = 14
+        fontsize_legend = 12
         xlabel_text = r"$r$"
         ylabel_text = r"Fidelity $|\langle \ell_L|\ell_g\rangle|^2$"
         if plus_state:
@@ -148,11 +149,14 @@ def plot_construction_prob(
             ylabel_text = "Fidelity |<+_L|+_g>|^2"
 
     ## Plot:
-    for m, f0_vec in per_m_results.items():
+    linestyles = ["-", "--", "-."]
+    for i, (m, f0_vec) in enumerate(per_m_results.items()):
         if Globals.LaTeX_RENDERING:
             label1 = f"$m={m}$"
         else:
             label1 = f"m={m}"
+        linestyle = linestyles[i % len(linestyles)]
+        plot_kwargs["linestyle"] = linestyle
         p1 = plt.plot(r_vec, f0_vec, label=label1, **plot_kwargs)
         # p2 = plt.plot(r_vec, f2_vec, label=label2, **plot_kwargs)
 
@@ -165,8 +169,14 @@ def plot_construction_prob(
     plt.gcf().set_size_inches(width, height*0.6)
     plt.tight_layout()
     
-    plt.legend(fontsize=fontsize_legend, loc="lower right", labelspacing=0.2, handlelength=1.5)
+    plt.legend(fontsize=fontsize_legend, loc="lower right", labelspacing=0.04, handlelength=3.0)
     plt.show()
+
+    file_name = ""\
+        + "Fidelity_of_preparation"\
+    
+    save_figure(plt.gcf(), file_name, dpi=500, transparent=True, extensions=['pdf', 'png', 'svg'])
+    print("Saved.")
 
     print("Done.")
 
