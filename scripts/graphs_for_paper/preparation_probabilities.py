@@ -237,7 +237,7 @@ def _plot_preparation_results(
     N: int | _NumMomentsFuncType | None = None,
     label_style: Literal["inline", "inline-adjusted", "legend"] = "inline",
     text_font_size: int = 16,
-    text_legend_on_plot_font_size: int = 16,
+    text_legend_on_plot_font_size: int = 14,
     _adjust_ticks_font: bool = True,
     x_scale: Literal['linear', 'log'] = 'linear',
     y_scale: Literal['linear', 'log'] = 'linear',
@@ -307,7 +307,11 @@ def _plot_preparation_results(
             for y_vec, state_label in [(y_vec_0, "0"), (y_vec_1, "1")]:
                 final_pt = (x_vec[-1], y_vec[-1])
                 text_pos = _get_text_pos(final_pt, m, x_scale=x_scale, x_dif=x_dif)
-                text = f"m={m}, |{state_label}⟩"
+
+                if Globals.LaTeX_RENDERING:
+                    text = r"$|%s_L\rangle, m{=}%s$" % (state_label, m)
+                else:
+                    text = f"m={m}, |{state_label}>"
                 text_kwargs = dict(fontsize=text_legend_on_plot_font_size, ha='left', va='center')
                 if label_style == "inline":
                     ax.text(*text_pos, text, **text_kwargs)
@@ -322,7 +326,7 @@ def _plot_preparation_results(
 
     ## ========= Legend / layout =========:
     if label_style in ["inline", "inline-adjusted"]:
-        _extend_axis_without_grid(ax, extension_factor=0.15)
+        _extend_axis_without_grid(ax, extension_factor=0.12)
         legend = None
         plt.tight_layout()
     elif label_style == "legend":
@@ -360,8 +364,8 @@ def _plot_preparation_results(
 # ---------------------------------------------------------------------------
 
 def plot_preparation_probability_for_squeezed_codes(
-    num_moments: int = 50,
-    photon_num_vec = [float(n) for n in np.linspace(0.0, 5.0, 11)],
+    num_moments: int = 200,
+    photon_num_vec = [float(n) for n in np.linspace(0.0, 5.0, 51)],
     num_code_states: int = 3,
     basis: LogicalBasisName = "main",
 ) -> None:
