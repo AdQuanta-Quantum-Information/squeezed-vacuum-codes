@@ -1,7 +1,7 @@
 import numpy as np
 import qutip as qt
 from qutip_qip import operations as qubit_operations
-from typing import Final, overload, TypedDict
+from typing import Final, TypeAlias, overload, TypedDict, Literal
 from dataclasses import dataclass
 
 sqrt2 = np.sqrt(2)
@@ -12,7 +12,9 @@ from sympy.physics import quantum
 
 
 if __name__ == "__main__":
-	from __init__ import add_root_to_path; add_root_to_path()
+    from __init__ import add_root_to_path
+    path = add_root_to_path()
+	
 
 ## our supporting modules:
 from src.utils import assertions
@@ -41,13 +43,24 @@ if Globals.LaTeX_RENDERING:
 
 
 
-NUM_MODES : Final[int] = 500
+_DEFAULT_NUM_MODES : Final[int] = 500
 
 qubit_0_proj = qt.basis(2, 0).proj()
 qubit_1_proj = qt.basis(2, 1).proj()
 
-I_light = qt.qeye(NUM_MODES)
+I_light = qt.qeye(_DEFAULT_NUM_MODES)
 H = qt.Qobj([[1, 1], [1, -1]]) / sqrt2
+
+
+class _MetaData(TypedDict):
+	probabilities: list[float]
+
+
+_PreparationOutputType : TypeAlias = tuple[qt.Qobj, qt.Qobj] | tuple[qt.Qobj, qt.Qobj, _MetaData]
+
+
+
+
 
 
 @dataclass
@@ -68,20 +81,26 @@ def _is_power_of_2(n:int) -> bool:
 	return _is_integer(np.log2(n))
 
 
-def rot(θ:float) -> qt.Qobj:
-	return rotation(NUM_MODES, θ)
+def rot(θ:float, num_moments:int=_DEFAULT_NUM_MODES) -> qt.Qobj:
+	return rotation(num_moments, θ)
 
 
-def conditional_rotation_2_angles(θ0:float, θ1:float) -> qt.Qobj:
-	return qt.tensor(qubit_0_proj, rot(θ0)) + qt.tensor(qubit_1_proj, rot(θ1))
+def conditional_rotation_2_angles(θ0:float, θ1:float, num_moments:int=_DEFAULT_NUM_MODES) -> qt.Qobj:
+	def _rot(θ:float) -> qt.Qobj:
+		return rot(θ, num_moments=num_moments)
+	return qt.tensor(qubit_0_proj, _rot(θ0)) + qt.tensor(qubit_1_proj, _rot(θ1))
 
 
-def conditional_rotation_1_angle(θ:float, ϕ:float=0.0) -> qt.Qobj:
+def conditional_rotation_1_angle(θ:float, ϕ:float=0.0, num_moments:int=_DEFAULT_NUM_MODES) -> qt.Qobj:
 	phase = np.exp(1j*ϕ)
-	return qt.tensor(qubit_0_proj, I_light) + phase * qt.tensor(qubit_1_proj, rot(θ))
+	I_light = qt.qeye(num_moments)
+	def _rot(θ:float) -> qt.Qobj:
+		return rot(θ, num_moments=num_moments)
+	
+	return qt.tensor(qubit_0_proj, I_light) + phase * qt.tensor(qubit_1_proj, _rot(θ))
 
 
-def measure_qubit_and_get_light(ψ: qt.Qobj) -> list[qt.Qobj]:
+def measure_qubit_and_get_light(ψ: qt.Qobj) -> tuple[list[qt.Qobj], list[float]]:
 	## Measure the qubit state
 	branches = measure_qubit_state(ψ, num_qubits=1, return_full_stats=True, light_at="end")
 	probabilities = [b['prob'] for b in branches]
@@ -97,7 +116,7 @@ def measure_qubit_and_get_light(ψ: qt.Qobj) -> list[qt.Qobj]:
 		random_index = np.random.choice(len(probabilities), p=probabilities)
 		random_state = light_states[random_index]
 
-	return light_states
+	return light_states, probabilities
 
 
 def _phase_for_iteration_k(k:int, m:int) -> float:
@@ -111,14 +130,15 @@ def qubit_rotation(logical_info:LogicalCodewordInfo) -> qt.Qobj:
 	return qubit_rot
 
 
-def _iter_sequence(ψ_light: qt.Qobj, θ:float, measurement_basis:LogicalCodewordInfo) -> tuple[qt.Qobj, ...]:
+def _iter_sequence(ψ_light: qt.Qobj, θ:float, measurement_basis:LogicalCodewordInfo, num_moments:int=_DEFAULT_NUM_MODES) -> tuple[qt.Qobj, qt.Qobj, list[float]]:
 	## Init qubit in |0⟩
 	qubit = qt.basis(2, 0)
 	ψ = qt.tensor(qubit, ψ_light)
+	I_light = qt.qeye(num_moments)
 
 	## H⊗I --- C-Rot ---  H⊗I:
 	ψ = qt.tensor(H, I_light) @ ψ
-	ψ = conditional_rotation_1_angle(θ) @ ψ
+	ψ = conditional_rotation_1_angle(θ, num_moments=num_moments) @ ψ
 	ψ = qt.tensor(H, I_light) @ ψ
 
 	## Qubit rotation:
@@ -126,18 +146,26 @@ def _iter_sequence(ψ_light: qt.Qobj, θ:float, measurement_basis:LogicalCodewor
 	ψ = qt.tensor(qubit_rot, I_light) @ ψ
 
 	## Measure light state
-	ψ_light_0, ψ_light_1 = measure_qubit_and_get_light(ψ)
+	light_states, probabilities = measure_qubit_and_get_light(ψ)
+	assert len(light_states) == 2, f"Expected 2 branches from measurement, got {len(light_states)}"
+	ψ_light_0, ψ_light_1 = light_states
 
-	return ψ_light_0, ψ_light_1
+	return ψ_light_0, ψ_light_1, probabilities 
 
 
-def get_code_states_using_rotation_log2_m(m:int, r:float, logical_info:LogicalCodewordInfo) -> tuple[qt.Qobj, ...]: 
+def get_code_states_using_rotation_log2_m(m:int, r:float, logical_info:LogicalCodewordInfo, num_moments:int=_DEFAULT_NUM_MODES, with_meta:bool=False) -> tuple[qt.Qobj, qt.Qobj, _MetaData]: 
 
 	k = assertions.integer(np.log2(m), reason=f"`m` must be an integer power of 2, such that m=2^k for some k. Got {m!r}")
 
-	vacuum_state = qt.basis(NUM_MODES, 0)
+	vacuum_state = qt.basis(num_moments, 0)
 	ϕ0 = squeezing_direction_to_squeezing_phase(0)
-	ψ_light = qt.squeeze(NUM_MODES, r * ϕ0) @ vacuum_state
+
+	ψ_light_0 = qt.squeeze(num_moments, r * ϕ0) @ vacuum_state
+	ψ_light_1 : qt.Qobj = None  # placeholder for type checking #type: ignore
+	
+	prob_0 = 1.0
+	prob_1 = 1.0
+	
 
 	for i in range(k):
 		is_final = i == k - 1
@@ -146,28 +174,36 @@ def get_code_states_using_rotation_log2_m(m:int, r:float, logical_info:LogicalCo
 		θ = π * (1/2)**(i+1) 
 		
 		measurement_basis = logical_info if is_final else LogicalCodewordInfo()
-		ψ_light, ψ_light_second_option = _iter_sequence(ψ_light, θ, measurement_basis=measurement_basis)
+		ψ_light_0, ψ_light_1, crnt_probabilities = _iter_sequence(ψ_light_0, θ, measurement_basis=measurement_basis, num_moments=num_moments)
+
+		## Update probabilities:
+		prob_0 *= crnt_probabilities[0]
+		prob_1 *= crnt_probabilities[1]
 
 
 		if False=="False":
-			plot_light_states([ψ_light, ψ_light_second_option])
+			plot_light_states([ψ_light_0, ψ_light_1])
 			print("Plotted")
+		
+	meta_data = _MetaData(probabilities=[prob_0, prob_1])
+	return ψ_light_0, ψ_light_1, meta_data
 
-	return ψ_light, ψ_light_second_option
 
-
-def _create_positive_m_legged_superposition(m:int, r:float) -> qt.Qobj:
-	vacuum_state = qt.basis(NUM_MODES, 0)
+def _create_positive_m_legged_superposition(m:int, r:float, num_moments:int=_DEFAULT_NUM_MODES) -> tuple[qt.Qobj, float]:
+	vacuum_state = qt.basis(num_moments, 0)
 	ϕ0 = squeezing_direction_to_squeezing_phase(0)
-	ψ_light = qt.squeeze(NUM_MODES, r * ϕ0) @ vacuum_state
+	ψ_light = qt.squeeze(num_moments, r * ϕ0) @ vacuum_state
+	I_light = qt.qeye(num_moments)
 	θ = 2*π / m
+
+	probability = 1.0
 
 
 	for k in range(m-1):
 		## This iteration operators:
 		ϕ = _phase_for_iteration_k(k, m)
 		HoI = qt.tensor(H, I_light)
-		C_Rot = conditional_rotation_1_angle(θ, ϕ)
+		C_Rot = conditional_rotation_1_angle(θ, ϕ, num_moments=num_moments)
 		iter_op = HoI @ C_Rot @ HoI
 
 		## State before measurement
@@ -176,43 +212,61 @@ def _create_positive_m_legged_superposition(m:int, r:float) -> qt.Qobj:
 		ψ = iter_op @ ψ
 
 		## Measure light state 
-		ψ_light_0, ψ_light_1 = measure_qubit_and_get_light(ψ)
+		light_states, probabilities = measure_qubit_and_get_light(ψ)
+		assert len(light_states) == 2, f"Expected 2 branches from measurement, got {len(light_states)}"
+		ψ_light_0, ψ_light_1 = light_states
+
+		probability *= probabilities[0]
 
 		## Post-select |0⟩ qubit outcome:
 		ψ_light = ψ_light_0
 
-	return ψ_light
+	return ψ_light, probability
 
 
-def get_code_states_using_rotation_even(m:int, r:float, logical_info:LogicalCodewordInfo) -> tuple[qt.Qobj, ...]:
+def get_code_states_using_rotation_even(m:int, r:float, logical_info:LogicalCodewordInfo, num_moments:int=_DEFAULT_NUM_MODES, with_meta:bool=False) -> tuple[qt.Qobj, qt.Qobj, _MetaData]:
 	m = assertions.even(m, reason="`m` must be an even integer")
 	half_m = m // 2
 
-	ψ_light = _create_positive_m_legged_superposition(half_m, r)
+	ψ_light, prep_probability = _create_positive_m_legged_superposition(half_m, r, num_moments=num_moments)
 
 	θ = π/m
-	ψ_light1, ψ_light2 =_iter_sequence(ψ_light, θ)
+	ψ_light1, ψ_light2, probabilities =_iter_sequence(ψ_light, θ, measurement_basis=logical_info, num_moments=num_moments)
+
+	# Update probabilities:
+	probabilities = [prob*prep_probability for prob in probabilities]
 
 	# plot_light_states([ψ_light1, ψ_light2])
 
-	return ψ_light1, ψ_light2
+	meta_data = _MetaData(probabilities=probabilities)
+	return ψ_light1, ψ_light2, meta_data
 
 
-
-def get_code_states_using_rotation(m:int, r:float, logical_info:LogicalCodewordInfo) -> tuple[qt.Qobj, ...]:
+@overload
+def get_code_states_using_rotation(m:int, r:float, logical_info:LogicalCodewordInfo, num_moments:int=_DEFAULT_NUM_MODES, with_meta:Literal[False]=False) -> tuple[qt.Qobj, qt.Qobj]: ...
+@overload
+def get_code_states_using_rotation(m:int, r:float, logical_info:LogicalCodewordInfo, num_moments:int=_DEFAULT_NUM_MODES, with_meta:Literal[True]=True) -> tuple[qt.Qobj, qt.Qobj, _MetaData]: ...
+def get_code_states_using_rotation(
+	m:int, r:float, logical_info:LogicalCodewordInfo, num_moments:int=_DEFAULT_NUM_MODES, with_meta:bool=False
+) -> _PreparationOutputType:
 	
 
 	## If m=2^k
 	if _is_power_of_2(m):
-		return get_code_states_using_rotation_log2_m(m, r, logical_info=logical_info)
+		ψ_light_0, ψ_light_1, meta_data = get_code_states_using_rotation_log2_m(m, r, logical_info=logical_info, num_moments=num_moments, with_meta=with_meta)
 	
 	## if m is even
 	elif _is_even(m):
-		return get_code_states_using_rotation_even(m, r, logical_info=logical_info)
+		ψ_light_0, ψ_light_1, meta_data = get_code_states_using_rotation_even(m, r, logical_info=logical_info, num_moments=num_moments, with_meta=with_meta)
 
 	## if m is odd:
 	else:
 		raise ValueError("do not support odd `m`")
+	
+	if with_meta:
+		return ψ_light_0, ψ_light_1, meta_data
+	
+	return ψ_light_0, ψ_light_1
 
 
 @overload
@@ -306,7 +360,7 @@ def compare_constructions(
 	ψ0, ψ1 = get_code_states_using_rotation(m, r, logical_info=logical_info)
 
 	## Compare with simple construction:
-	m0, m1 = simple_m_legged_code(m, r, num_moments=NUM_MODES, code_type="squeeze")
+	m0, m1 = simple_m_legged_code(m, r, num_moments=_DEFAULT_NUM_MODES, code_type="squeeze")
 	c0, c1 = logical_codewords(m0, m1, logical_info)
 
 	f1 = float(qt.metrics.fidelity(ψ0, c0))

@@ -29,24 +29,14 @@ from src.cost_functions import compute_cost_on_logical_codewords
 from src.cost_functions import MeasurementTypeLiteral, NoiseOptionLiteral, BosonicNoiseType, CostPerNoiseDict, CostPerLegsPerNoiseDict, CostPerLogicalBasis, LogicalBasisName
 
 from globals import Globals
-
-if Globals.LaTeX_RENDERING:
-    plt.rcParams['text.usetex'] = True
-    plt.rcParams['font.family'] = 'serif'
-    plt.rcParams['font.serif'] = ['Computer Modern Serif']
-    plt.rcParams['text.latex.preamble'] = r'\usepackage{amsmath}'
-
-
-
-_NumMomentsFuncType : TypeAlias = Callable[[float], int]
-
-
-def _latex_toggled_str(latex_str:str, plain_str:str) -> str:
-    """Return latex_str if LaTeX rendering is enabled, else plain_str."""
-    if Globals.LaTeX_RENDERING:
-        return latex_str
-    else:
-        return plain_str
+from _visual_helper import (
+    _NumMomentsFuncType,
+    latex_toggled_str as _latex_toggled_str,
+    extend_axis_without_grid as _extend_axis_without_grid,
+    adjust_label_positions_to_avoid_overlap as _adjust_label_positions_to_avoid_overlap,
+    add_legend_background_box as _add_legend_background_box,
+    place_header_labels_above_legend as _place_header_labels_above_legend,
+)
 
 
 
@@ -307,124 +297,10 @@ def _get_text_pos(
     return x, y
 
 
-def _extend_axis_without_grid(ax: Axes, extension_factor: float = 0.2) -> None:
-    """
-    Extend the x-axis limits while keeping the grid at its original extent.
-    
-    Parameters
-    ----------
-    ax : Axes
-        The matplotlib axes to modify.
-    extension_factor : float, optional
-        Factor by which to extend the x-axis. For log scale, this multiplies the upper limit.
-        For linear scale, this adds extension_factor * range.
-    """
-    
-    xlim = ax.get_xlim()
-    ylim = ax.get_ylim()
-    original_xlim = xlim[1]
-    
-    # Check if x-axis is log scale
-    is_log_scale = ax.get_xscale() == 'log'
-    
-    if is_log_scale:
-        # For log scale: extend in log space
-        # Convert to log space, extend linearly, then convert back
-        log_xlim = np.log10(xlim[1])
-        log_range = np.log10(xlim[1]) - np.log10(xlim[0])
-        new_log_xlim = log_xlim + extension_factor * log_range
-        new_xlim = 10 ** new_log_xlim
-    else:
-        # For linear scale: add extension_factor * range
-        x_range = xlim[1] - xlim[0]
-        new_xlim = xlim[1] + extension_factor * x_range
-    
-    # Extend the visible axis range first
-    ax.set_xlim(xlim[0], new_xlim)
-    
-    # Create a transform that clips at the original x limit
-    # This works by creating a bbox in data coordinates
-    
-    # Define the clipping path as a rectangle
-    clip_path = Path([
-        [xlim[0], ylim[0]],
-        [original_xlim, ylim[0]],
-        [original_xlim, ylim[1]],
-        [xlim[0], ylim[1]],
-        [xlim[0], ylim[0]]
-    ])
-    
-    clip_patch = mpatches.PathPatch(clip_path, transform=ax.transData, visible=False)
-    
-    # Apply clipping to all grid lines
-    for line in ax.get_xgridlines():
-        line.set_clip_path(clip_patch)
-        line.set_clip_on(True)
-    
-    for line in ax.get_ygridlines():
-        line.set_clip_path(clip_patch)
-        line.set_clip_on(True)
+# _extend_axis_without_grid  →  imported from _visual_helper
 
 
-def _adjust_label_positions_to_avoid_overlap(
-    ax: Axes,
-    label_data: list[tuple[tuple[float, float], str, dict]],
-    min_y_distance_factor: float = 1.5,
-    x_scale: Literal['linear', 'log'] = 'log'
-) -> list[tuple[float, float]]:
-    """
-    Adjust label positions to avoid overlaps in log-scale y-axis plots.
-    
-    Parameters
-    ----------
-    ax : Axes
-        The matplotlib axes containing the labels.
-    label_data : list[tuple[tuple[float, float], str, dict]]
-        List of (position, text, kwargs) for each label.
-    min_y_distance_factor : float, optional
-        Minimum distance between labels as a factor of the smaller y-value.
-    x_scale : Literal['linear', 'log'], optional
-        Scale of the x-axis.
-        
-    Returns
-    -------
-    adjusted_positions : list[tuple[float, float]]
-        List of adjusted (x, y) positions for each label.
-    """
-    if not label_data:
-        return []
-    
-    # Sort labels by y-position
-    sorted_indices = sorted(range(len(label_data)), key=lambda i: label_data[i][0][1])
-    sorted_labels = [label_data[i] for i in sorted_indices]
-    
-    # Initialize adjusted positions
-    adjusted_positions = [pos for pos, _, _ in sorted_labels]
-    
-    # Adjust overlapping labels in log space
-    for i in range(1, len(adjusted_positions)):
-        prev_x, prev_y = adjusted_positions[i-1]
-        curr_x, curr_y = adjusted_positions[i]
-        
-        # Calculate minimum distance in log space
-        if prev_y > 0 and curr_y > 0:
-            log_prev_y = np.log10(prev_y)
-            log_curr_y = np.log10(curr_y)
-            
-            # Minimum log-space distance (about 0.15 on log scale)
-            min_log_distance = np.log10(min_y_distance_factor)
-            
-            if log_curr_y - log_prev_y < min_log_distance:
-                # Shift current label up
-                new_log_y = log_prev_y + min_log_distance
-                adjusted_positions[i] = (curr_x, 10 ** new_log_y)
-    
-    # Map back to original order
-    final_positions = [None] * len(label_data)
-    for i, orig_idx in enumerate(sorted_indices):
-        final_positions[orig_idx] = adjusted_positions[i]
-    
-    return final_positions
+# _adjust_label_positions_to_avoid_overlap  →  imported from _visual_helper
 
 
 def _add_unified_legend_for_both_axes(
@@ -972,12 +848,12 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
 
 def _num_moments_func(mean_n: float) -> int:
     """Determine number of moments based on mean photon number."""
-    return 50*int(np.ceil(mean_n))
+    return 80*int(np.ceil(mean_n))
 
 
 def plot_full_codewords_numeric_figure_x_is_nbar(
     num_moments : int|_NumMomentsFuncType = _num_moments_func,
-    photon_num_vec = [float(n) for n in np.linspace(0.0, 5.0, 41)],
+    photon_num_vec = [float(n) for n in np.linspace(0.0, 7.5, 31)],
     num_code_states:int = 3,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00", "fidelity01", "fidelity00"
     noise_method : NoiseOptionLiteral = "kraus-KL-style",  # "simulated", "kraus" "kraus-channel"
@@ -1039,7 +915,7 @@ def plot_full_codewords_numeric_figure_x_is_nbar(
 
 
 if __name__ == "__main__":
-    plot_full_codewords_numeric_figure_x_is_gamma()
-    plot_full_codewords_numeric_figure_x_is_nbar()
+    # plot_full_codewords_numeric_figure_x_is_gamma()
+    # plot_full_codewords_numeric_figure_x_is_nbar()
     draw_now()
     input("Press Enter to close the plots and end the program...")

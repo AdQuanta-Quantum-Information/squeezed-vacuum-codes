@@ -30,13 +30,15 @@ if __name__ == "__main__":
     from __init__ import  add_root_to_path
     path = add_root_to_path()
 
+ 
+
+from src.preparation_protocols import get_code_states_using_rotation, LogicalCodewordInfo
 from src.utils.visuals.matplotlib_support import save_figure, draw_now
 from src.utils.prints import ProgressBar
 from src.utils.files import saveload
 from src.utils.maths import factorial, sqrt_factorial, power_computed_in_log_space
 from src.utils.caches import cache
 
-from src.squeezing_code import SqueezingCode
 from src.visualizations import plot_light_states, plot_fock_distribution
 from src.codes_built_in_superposition import simple_m_legged_code, get_m_legged_states, _CodeTypes
 from src.noise import noise_simulation, BosonicNoiseType, test_effect_of_time_resolution
@@ -62,8 +64,8 @@ class CostPerLogicalBasis(TypedDict):
     main : float
     dual : float
 
-MeasurementTypeLiteral : TypeAlias = Literal["KL", "overlap01", "overlap00", "fidelity01", "fidelity00"]
-NoiseOptionLiteral : TypeAlias = Literal["simulated", "kraus-KL-style", "kraus-channel"]
+MeasurementTypeLiteral : TypeAlias = Literal["KL", "overlap01", "overlap00", "fidelity01", "fidelity00", "probability"]
+NoiseOptionLiteral : TypeAlias = Literal["simulated", "kraus-KL-style", "kraus-channel", "No-noise"]
 VariablesNameLiteral : TypeAlias = Literal["r", "γ", "mean_n"]
 CostPerNoiseDict : TypeAlias = dict[BosonicNoiseType, list[CostPerLogicalBasis]]
 CostPerLegsPerNoiseDict : TypeAlias = dict[int, CostPerNoiseDict]
@@ -295,6 +297,24 @@ def _get_noised_state(ρ_in: Qobj, γ: float, **kwargs) -> Qobj:
     return ρ_out  #type: ignore
 
 
+@cache(ram=True, disk=False)
+def derive_preparation_probabilities(m:int, r:float, num_moments:int, use_dual_code:bool) -> tuple[float, float]:
+    if use_dual_code:
+        one_over_sqrt2 = 1/np.sqrt(2)
+        logical_info = LogicalCodewordInfo(a=one_over_sqrt2, b=one_over_sqrt2)
+    else:
+        logical_info = LogicalCodewordInfo(a=1.0, b=0.0)
+
+
+    ψ0, ψ1, meta_data = get_code_states_using_rotation(
+        m=m, r=r, logical_info=logical_info, with_meta=True, num_moments=num_moments
+    )
+    
+    probabilities = meta_data["probabilities"]
+    return probabilities[0], probabilities[1]
+
+
+
 @_cache_function()
 def _compute_cost_given_m_r_and_noise(
     m:int, r:float, γ:float, 
@@ -332,8 +352,15 @@ def _compute_cost_given_m_r_and_noise(
             f = overlap_matrix(ρ_ins, ρ_outs)
             cost = compute_cost_from_overlap_matrix(f, measurement)
                 
+        case "No-noise":
+            assert measurement=="probability", f"No noise option only implemented for 'probability' measurement, got {measurement!r}"
+            assert γ == 0, f"γ must be 0 for no-noise option, got {γ!r}"
+            assert code_type == "squeeze", f"No noise option only implemented for 'squeeze' code type, got {code_type!r}"
+            cost = derive_preparation_probabilities(m, r, num_moments, use_dual_code=use_dual_code)
+
         case _:
             raise ValueError(f"Unknown noise method: {noise_method!r}")
+            
 
     return cost
 
