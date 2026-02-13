@@ -381,6 +381,7 @@ def plot_preparation_probability_for_squeezed_codes(
 ) -> None:
 
     ## ========= Inputs =========:
+    photon_num_vec = [num for num in photon_num_vec if num<=6.0]
     γ = 0
     measurement: MeasurementTypeLiteral = "probability"
     noise_method: NoiseOptionLiteral = "No-noise"
