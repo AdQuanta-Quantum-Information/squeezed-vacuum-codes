@@ -117,9 +117,10 @@ def adjust_label_positions_to_avoid_overlap(
     label_data: list[tuple[tuple[float, float], str, dict]],
     min_y_distance_factor: float = 1.5,
     x_scale: Literal['linear', 'log'] = 'log',
+    y_scale: Literal['linear', 'log'] = 'log',
 ) -> list[tuple[float, float]]:
     """
-    Adjust label positions to avoid overlaps on a log-scale y-axis.
+    Adjust label positions to avoid overlaps on the y-axis.
 
     Parameters
     ----------
@@ -128,9 +129,12 @@ def adjust_label_positions_to_avoid_overlap(
     label_data : list[tuple[tuple[float, float], str, dict]]
         List of ``(position, text, kwargs)`` for each label.
     min_y_distance_factor : float, optional
-        Minimum distance between labels as a factor of the smaller y-value.
+        For log y-scale: multiplicative factor (≥1.0) between consecutive labels.
+        For linear y-scale: fraction of y-range as minimum spacing (e.g., 0.05 = 5%).
     x_scale : Literal['linear', 'log'], optional
         Scale of the x-axis.
+    y_scale : Literal['linear', 'log'], optional
+        Scale of the y-axis.
 
     Returns
     -------
@@ -144,15 +148,28 @@ def adjust_label_positions_to_avoid_overlap(
     sorted_labels = [label_data[i] for i in sorted_indices]
     adjusted_positions = [pos for pos, _, _ in sorted_labels]
 
-    for i in range(1, len(adjusted_positions)):
-        prev_x, prev_y = adjusted_positions[i - 1]
-        curr_x, curr_y = adjusted_positions[i]
-        if prev_y > 0 and curr_y > 0:
-            log_prev_y = np.log10(prev_y)
-            log_curr_y = np.log10(curr_y)
-            min_log_distance = np.log10(min_y_distance_factor)
-            if log_curr_y - log_prev_y < min_log_distance:
-                adjusted_positions[i] = (curr_x, 10 ** (log_prev_y + min_log_distance))
+    if y_scale == 'log':
+        # Log scale: min_y_distance_factor is a multiplicative factor
+        for i in range(1, len(adjusted_positions)):
+            prev_x, prev_y = adjusted_positions[i - 1]
+            curr_x, curr_y = adjusted_positions[i]
+            if prev_y > 0 and curr_y > 0:
+                log_prev_y = np.log10(prev_y)
+                log_curr_y = np.log10(curr_y)
+                min_log_distance = np.log10(min_y_distance_factor)
+                if log_curr_y - log_prev_y < min_log_distance:
+                    adjusted_positions[i] = (curr_x, 10 ** (log_prev_y + min_log_distance))
+    else:
+        # Linear scale: min_y_distance_factor is a fraction of the y-range
+        ylim = ax.get_ylim()
+        y_range = ylim[1] - ylim[0]
+        min_distance = min_y_distance_factor * y_range
+        
+        for i in range(1, len(adjusted_positions)):
+            prev_x, prev_y = adjusted_positions[i - 1]
+            curr_x, curr_y = adjusted_positions[i]
+            if curr_y - prev_y < min_distance:
+                adjusted_positions[i] = (curr_x, prev_y + min_distance)
 
     final_positions: list[tuple[float, float] | None] = [None] * len(label_data)
     for i, orig_idx in enumerate(sorted_indices):

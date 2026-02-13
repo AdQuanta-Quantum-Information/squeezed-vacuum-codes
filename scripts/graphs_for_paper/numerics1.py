@@ -728,7 +728,8 @@ def _plot_results(
                 adjusted_positions = _adjust_label_positions_to_avoid_overlap(
                     ax, label_data, 
                     min_y_distance_factor=1.5,
-                    x_scale=x_scale
+                    x_scale=x_scale,
+                    y_scale=y_scale
                 )
                 
                 # Add labels with adjusted positions

@@ -235,13 +235,14 @@ def _plot_preparation_results(
     figure_name_prefix: str = "",
     figure_name_extra: str = "",
     N: int | _NumMomentsFuncType | None = None,
-    label_style: Literal["inline", "inline-adjusted", "legend"] = "inline",
+    label_style: Literal["inline", "inline-adjusted", "legend"] = "inline-adjusted",
     text_font_size: int = 16,
     text_legend_on_plot_font_size: int = 14,
     _adjust_ticks_font: bool = True,
     x_scale: Literal['linear', 'log'] = 'linear',
     y_scale: Literal['linear', 'log'] = 'linear',
     figure_title: str = "",
+    _fig_realtive_height_factor: float = 0.7,
 ):
     """
     Plot preparation probabilities for squeeze-vacuum codes.
@@ -320,9 +321,17 @@ def _plot_preparation_results(
 
     # Adjusted inline labels
     if label_style == "inline-adjusted" and label_data_list:
-        adjusted = _adjust_label_positions_to_avoid_overlap(ax, label_data_list, x_scale=x_scale)
+        adjusted = _adjust_label_positions_to_avoid_overlap(
+            ax, label_data_list, x_scale=x_scale, y_scale=y_scale,
+            min_y_distance_factor = 0.06
+        )
         for (_, text, kwargs), pos in zip(label_data_list, adjusted):
             ax.text(*pos, text, **kwargs)
+
+    ## Change figure height (after tight_layout) to make room for legend if needed:
+    width = fig.get_figwidth()
+    height = fig.get_figheight() 
+    fig.set_size_inches(width, height*_fig_realtive_height_factor)
 
     ## ========= Legend / layout =========:
     if label_style in ["inline", "inline-adjusted"]:
@@ -336,6 +345,7 @@ def _plot_preparation_results(
         plt.tight_layout(rect=(0, 0.12, 1, 1))
     else:
         raise ValueError(f"Unknown label_style: {label_style!r}")
+    
 
     if figure_title:
         fig.suptitle(figure_title, fontsize=text_font_size)
@@ -364,8 +374,8 @@ def _plot_preparation_results(
 # ---------------------------------------------------------------------------
 
 def plot_preparation_probability_for_squeezed_codes(
-    num_moments: int = 200,
-    photon_num_vec = [float(n) for n in np.linspace(0.0, 5.0, 51)],
+    num_moments: int = 300,
+    photon_num_vec = [float(n) for n in np.linspace(0.0, 7.5, 151)],
     num_code_states: int = 3,
     basis: LogicalBasisName = "main",
 ) -> None:
