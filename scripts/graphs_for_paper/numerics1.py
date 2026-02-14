@@ -26,7 +26,7 @@ from src.utils.strings import format_float_for_as_str
 
 from src.codes_built_in_superposition import _CodeTypes
 from src.cost_functions import compute_cost_on_logical_codewords
-from src.cost_functions import MeasurementTypeLiteral, NoiseOptionLiteral, BosonicNoiseType, CostPerNoiseDict, CostPerLegsPerNoiseDict, CostPerLogicalBasis, LogicalBasisName
+from src.cost_functions import MeasurementTypeLiteral, NoiseOptionLiteral, BosonicNoiseType, CostPerNoiseDict, CostPerLegsPerNoiseDict, CostPerLogicalBasis, LogicalBasisName, _SpecificBasisOptionType
 
 from globals import Globals
 from _visual_helper import (
@@ -849,20 +849,25 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
 
 def _num_moments_func(mean_n: float) -> int:
     """Determine number of moments based on mean photon number."""
-    return 80*int(np.ceil(mean_n))
+    n = 50*int(np.ceil(mean_n))
+    n = max(n, 50)  # enforce a minimum of 50 moments for low photon numbers
+    n = min(n, 200) # enforce a maximum of 200 moments for high photon numbers to keep runtime reasonable
+    return n
 
 
 def plot_full_codewords_numeric_figure_x_is_nbar(
-    num_moments : int|_NumMomentsFuncType = _num_moments_func,
-    photon_num_vec = [float(n) for n in np.linspace(0.0, 7.5, 31)],
+    num_moments: int|_NumMomentsFuncType = _num_moments_func,
+    photon_num_vec = [float(n) for n in np.linspace(0.0, 5.0, 31)],
     num_code_states:int = 3,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00", "fidelity01", "fidelity00"
     noise_method : NoiseOptionLiteral = "kraus-KL-style",  # "simulated", "kraus" "kraus-channel"
-    γ = 1e-4
+    loss_basis: LogicalBasisName = "main",
+    dephasing_basis: LogicalBasisName = "dual",
+    γ = 1e-2
 ) -> None:
     
     ## ========= Inputs =========:
-    photon_num_vec = [n for n in photon_num_vec if n >= 1.0]
+    photon_num_vec = [n for n in photon_num_vec if n >= 0.5]
     x_vec_name = "num_photons"
     γ_str = _latex_toggled_str(r'$\gamma$', '$γ$')
     # Format gamma for title (LaTeX math-mode if enabled) and for filenames (plain sci)
@@ -891,7 +896,8 @@ def plot_full_codewords_numeric_figure_x_is_nbar(
             num_code_states=num_code_states,
             code=code,
             measurement=measurement,
-            noise_method=noise_method
+            noise_method=noise_method,
+            specific_bases=_SpecificBasisOptionType(loss=loss_basis, dephasing=dephasing_basis)
         )
         per_code_results[code] = results 
 
@@ -902,8 +908,8 @@ def plot_full_codewords_numeric_figure_x_is_nbar(
         x_vec=photon_num_vec,
         measurement=measurement,
         noise_method=noise_method,
-        loss_basis="main",
-        dephasing_basis="dual",
+        loss_basis=loss_basis,
+        dephasing_basis=dephasing_basis,
         figure_name_prefix="x-is-nbar",
         figure_name_extra=f"γ={gamma_file_str}",
         N=num_moments,
@@ -917,6 +923,6 @@ def plot_full_codewords_numeric_figure_x_is_nbar(
 
 if __name__ == "__main__":
     # plot_full_codewords_numeric_figure_x_is_gamma()
-    # plot_full_codewords_numeric_figure_x_is_nbar()
+    plot_full_codewords_numeric_figure_x_is_nbar()
     draw_now()
     input("Press Enter to close the plots and end the program...")

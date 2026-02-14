@@ -71,6 +71,11 @@ CostPerNoiseDict : TypeAlias = dict[BosonicNoiseType, list[CostPerLogicalBasis]]
 CostPerLegsPerNoiseDict : TypeAlias = dict[int, CostPerNoiseDict]
 
 
+class _SpecificBasisOptionType(TypedDict):
+    loss: LogicalBasisName
+    dephasing: LogicalBasisName
+
+
 ## Constants:
 PROG_BAR_SIGNIFICANT_DIGITS : Final[int] = 6
 NORMALIZE_LOGICAL_STATES_BEFORE_APPLYING_HADAMARD : Final[bool] = True
@@ -429,6 +434,30 @@ def _costs_matrix_from_overlap_matrices(overlap_matrices:NDArray[np.object_], me
     return costs_matrix
 
 
+def _basis_str_from_use_dual_code_bool(use_dual_code: bool) -> LogicalBasisName: 
+    return "dual" if use_dual_code else "main"
+
+
+def _skip_on_mismatched_basis(specific_bases: _SpecificBasisOptionType, noise_type: BosonicNoiseType, use_dual_code: bool) -> bool:
+    """Return True if the basis is not in the specific_bases list for the given noise_type."""
+
+    ## Checks:
+    assert isinstance(specific_bases, dict|None), f"specific_bases must be a dict, got {type(specific_bases)}"
+    if specific_bases is None:
+        return False
+    
+    if noise_type not in specific_bases:
+        raise KeyError(f"Noise type {noise_type!r} not found in specific_bases keys: {list(specific_bases.keys())}")
+    
+    ## Logic:
+    crnt_basis = _basis_str_from_use_dual_code_bool(use_dual_code)
+    allowed_basis = specific_bases[noise_type]
+    if crnt_basis == allowed_basis:
+        return False
+    else:
+        return True
+
+
 def compute_cost_on_logical_codewords(
     fixed_param_name: VariablesNameLiteral,
     fixed_value: float,
@@ -439,7 +468,8 @@ def compute_cost_on_logical_codewords(
     num_code_states:int = 3,
     code: _CodeTypes = "squeeze",  # "squeeze", "cat"
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "worst_fidelity", "average_fidelity", "coherence_survival", "overlap01", "overlap00"
-    noise_method : NoiseOptionLiteral = "kraus-KL-style"  # "simulated", "kraus"
+    noise_method : NoiseOptionLiteral = "kraus-KL-style",  # "simulated", "kraus"
+    specific_bases: _SpecificBasisOptionType | None = None
 ) -> CostPerLegsPerNoiseDict:
     
     if code == "gkp":
@@ -476,16 +506,24 @@ def compute_cost_on_logical_codewords(
                 ## Compute cost (this call is cached):
                 costs : CostPerLogicalBasis = {}  #type: ignore
                 for use_dual_code in ProgressBar([False, True], prefix=f"logical-basis   "):      
-                    cost = _compute_cost_given_m_r_and_noise(
-                        m, r, γ, 
-                        num_moments=_num_moment,
-                        noise_type=noise_type, 
-                        noise_method=noise_method,
-                        measurement=measurement,
-                        code_type=code,
-                        use_dual_code=use_dual_code,
-                        mesolve_time_res=mesolve_time_res
-                    )
+                    basis = _basis_str_from_use_dual_code_bool(use_dual_code)
+                    ProgressBar.newest().append_extra_str(f"basis: {basis!r}")
+
+                    if (specific_bases is not None) and _skip_on_mismatched_basis(specific_bases, noise_type, use_dual_code):
+                        cost = np.nan    
+                    
+                    else:
+                        cost = _compute_cost_given_m_r_and_noise(
+                            m, r, γ, 
+                            num_moments=_num_moment,
+                            noise_type=noise_type, 
+                            noise_method=noise_method,
+                            measurement=measurement,
+                            code_type=code,
+                            use_dual_code=use_dual_code,
+                            mesolve_time_res=mesolve_time_res
+                        )
+
                     costs["dual" if use_dual_code else "main"] = cost
 
                 cost_vec.append(costs)

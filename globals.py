@@ -5,6 +5,6 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class Globals:
     PRECISE: Final[bool] = True
-    DEBUG: Final[bool] = True
+    DEBUG: Final[bool] = False
     CACHE_ON_DISK: Final[bool] = True
     LaTeX_RENDERING: Final[bool] = True
