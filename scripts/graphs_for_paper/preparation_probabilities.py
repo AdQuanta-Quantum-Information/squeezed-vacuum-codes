@@ -375,7 +375,7 @@ def _plot_preparation_results(
 
 def plot_preparation_probability_for_squeezed_codes(
     num_moments: int = 300,
-    photon_num_vec = [float(n) for n in np.linspace(0.0, 7.5, 151)],
+    photon_num_vec = [float(n) for n in np.linspace(0.0, 0.2, 51)] + [float(n) for n in np.linspace(0.2, 7.5, 101)],
     num_code_states: int = 3,
     basis: LogicalBasisName = "main",
 ) -> None:
