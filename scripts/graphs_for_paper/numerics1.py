@@ -7,9 +7,10 @@ from matplotlib.lines import Line2D
 from matplotlib.text import Text
 from matplotlib.path import Path
 import matplotlib.patches as mpatches
+import matplotlib.transforms as mtransforms
 
 
-from typing import Literal 
+from typing import Literal, Callable, TypeAlias
 from typing import cast as type_cast
 
 
@@ -20,61 +21,23 @@ if __name__ == "__main__":
 from src.utils.visuals.matplotlib_support import save_figure, draw_now
 from src.utils.visuals.colors import color_shades, _RgbFloatTuple
 from src.utils.prints import ProgressBar
+from src.utils.strings import format_float_for_as_str
 
+
+from src.codes_built_in_superposition import _CodeTypes
 from src.cost_functions import compute_cost_on_logical_codewords
-from src.cost_functions import CodeTypeLiteral, MeasurementTypeLiteral, NoiseOptionLiteral, BosonicNoiseType, CostPerNoiseDict, CostPerLegsPerNoiseDict, CostPerLogicalBasis, LogicalBasisName
+from src.cost_functions import MeasurementTypeLiteral, NoiseOptionLiteral, BosonicNoiseType, CostPerNoiseDict, CostPerLegsPerNoiseDict, CostPerLogicalBasis, LogicalBasisName, _SpecificBasisOptionType
 
 from globals import Globals
+from _visual_helper import (
+    _NumMomentsFuncType,
+    latex_toggled_str as _latex_toggled_str,
+    extend_axis_without_grid as _extend_axis_without_grid,
+    adjust_label_positions_to_avoid_overlap as _adjust_label_positions_to_avoid_overlap,
+    add_legend_background_box as _add_legend_background_box,
+    place_header_labels_above_legend as _place_header_labels_above_legend,
+)
 
-if Globals.LaTeX_RENDERING:
-    plt.rcParams['text.usetex'] = True
-    plt.rcParams['font.family'] = 'serif'
-    plt.rcParams['font.serif'] = ['Computer Modern Serif']
-    plt.rcParams['text.latex.preamble'] = r'\usepackage{amsmath}'
-
-
-
-def _latex_toggled_str(latex_str:str, plain_str:str) -> str:
-    """Return latex_str if LaTeX rendering is enabled, else plain_str."""
-    if Globals.LaTeX_RENDERING:
-        return latex_str
-    else:
-        return plain_str
-
-
-def _format_float_for_title(value: float, use_latex: bool) -> str:
-    """Format a float for use in a figure title.
-
-    If use_latex is True, return a LaTeX math-mode string like
-    "$1\times10^{-6}$" so the TeX engine renders a proper exponent.
-    Otherwise return a compact plain string in scientific notation like
-    "1e-06".
-    """
-    if value == 0:
-        return r"$0$" if use_latex else "0"
-
-    if use_latex:
-        s = "{:.1e}".format(value)
-        mantissa_str, exp_str = s.split("e")
-        # clean mantissa (remove trailing .0)
-        try:
-            mant = float(mantissa_str)
-        except ValueError:
-            # fallback
-            return rf"${s}$"
-        # drop .0 when it's integer
-        if mant.is_integer():
-            mant_display = str(int(mant))
-        else:
-            mant_display = str(mant)
-        exp = int(exp_str)
-        # Return a LaTeX math expression
-        if mant_display == "1":
-            # omit the multiplicative 1 for aesthetics
-            return rf"$10^{{{exp}}}$"
-        return rf"${mant_display}\times10^{{{exp}}}$"
-    else:
-        return "{:.1e}".format(value)
 
 
 def _add_outside_legend(
@@ -260,14 +223,14 @@ def _axis_setup(
     if vertical_plots:
         nrows, ncols = 2, 1
         if _connected_plots:
-            fig_size = (5,8)
+            fig_size = (5,10.5)
         else:
-            fig_size = (5,10)
+            fig_size = (5,12)
     else:
         if _connected_plots:
             raise ValueError("Connected plots only supported for vertical arrangement.")
         nrows, ncols = 1, 2
-        fig_size = (10,4)
+        fig_size = (10, 5.5)
 
     ## Plotting setup
     if fig_dpi is None:
@@ -311,7 +274,7 @@ def _axis_setup(
 
 def _get_text_pos(
     final_graph_point: tuple[float, float], 
-    code: CodeTypeLiteral, m: int, 
+    code: _CodeTypes, m: int, 
     noise_type: BosonicNoiseType,
     x_scale: Literal['linear', 'log'] = 'log',
     x_dif: float = 1.0
@@ -334,69 +297,279 @@ def _get_text_pos(
     return x, y
 
 
-def _extend_axis_without_grid(ax: Axes, extension_factor: float = 0.2) -> None:
+# _extend_axis_without_grid  →  imported from _visual_helper
+
+
+# _adjust_label_positions_to_avoid_overlap  →  imported from _visual_helper
+
+
+def _add_unified_legend_for_both_axes(
+    fig: Figure,
+    axes: dict[BosonicNoiseType, Axes],
+    legend_colors: dict[str, dict[int, _RgbFloatTuple]],
+    legend_styles: dict[str, dict[int, str]] | None = None,
+    linewidth: float = 3,
+    vertical_plots: bool = True,
+    fontsize: int = 12,
+    title_row_x_shifts: list[float] | None = [-20, -20, -20],
+    title_row_y_shift: float = -11.0,
+    gkp_x_offset: float = 30.0,
+    gkp_y_offset: float = 0.0,
+    bg_padding_left: float = -65.0,
+    bg_padding_right: float = +1.0,
+    bg_padding_top: float = 0.0,
+    bg_padding_bottom: float = -10.0,
+    legend_y_offset: float = +0.08,
+) -> None:
     """
-    Extend the x-axis limits while keeping the grid at its original extent.
+    Add a unified legend for both axes showing codes and their m values.
+    GKP (which has no m) is placed as a separate element to the right of
+    the main table, with position controlled by gkp_x_offset / gkp_y_offset.
     
     Parameters
     ----------
-    ax : Axes
-        The matplotlib axes to modify.
-    extension_factor : float, optional
-        Factor by which to extend the x-axis. For log scale, this multiplies the upper limit.
-        For linear scale, this adds extension_factor * range.
+    fig : Figure
+        The matplotlib figure.
+    axes : dict
+        Dictionary of axes for loss and dephasing.
+    legend_colors : dict
+        Nested dict mapping {code: {m: color}}.
+    linewidth : float, optional
+        Line width for legend handles.
+    vertical_plots : bool, optional
+        Whether plots are arranged vertically.
+    fontsize : int, optional
+        Font size for legend text.
+    gkp_x_offset : float, optional
+        Horizontal offset (in points) of the GKP element from the right
+        edge of the main legend table.  Positive = further right.
+    gkp_y_offset : float, optional
+        Vertical offset (in points) of the GKP element relative to the
+        vertical centre of the main legend table.  Positive = upward.
+    bg_padding_left : float, optional
+        Left padding (in display units) for the grey background.
+    bg_padding_right : float, optional
+        Right padding (in display units) for the grey background.
+    bg_padding_top : float, optional
+        Top padding (in display units) for the grey background.
+    bg_padding_bottom : float, optional
+        Bottom padding (in display units) for the grey background.
+    legend_y_offset : float, optional
+        Vertical offset to move the legend up (positive) or down (negative).
+        Default is 0.0. Typical values: 0.02-0.1 for small adjustments.
     """
-    
-    xlim = ax.get_xlim()
-    ylim = ax.get_ylim()
-    original_xlim = xlim[1]
-    
-    # Check if x-axis is log scale
-    is_log_scale = ax.get_xscale() == 'log'
-    
-    if is_log_scale:
-        # For log scale: extend in log space
-        # Convert to log space, extend linearly, then convert back
-        log_xlim = np.log10(xlim[1])
-        log_range = np.log10(xlim[1]) - np.log10(xlim[0])
-        new_log_xlim = log_xlim + extension_factor * log_range
-        new_xlim = 10 ** new_log_xlim
+    ## Input control:
+    if vertical_plots:
+        legend_y_offset = 0
+
+
+    codes = list(legend_colors.keys())
+    if "gkp" in codes:
+        with_gkp = True
+        codes.remove("gkp")
     else:
-        # For linear scale: add extension_factor * range
-        x_range = xlim[1] - xlim[0]
-        new_xlim = xlim[1] + extension_factor * x_range
+        with_gkp = False
+        
+    all_m = sorted(set().union(*(legend_colors[code].keys() for code in codes)))
     
-    # Extend the visible axis range first
-    ax.set_xlim(xlim[0], new_xlim)
+    # Build table layout: header row (codes as columns), data rows (m as rows)
+    # Matplotlib legend fills entries column-major, so we build a row-major
+    # table first, then flatten it column-major.
+    ncol = len(codes) + 1  # +1 for m-value column
+    nrow = len(all_m) + 1  # +1 for header row
+
+    # Prepare x-shift for headers
+    if title_row_x_shifts is None:
+        title_row_x_shifts = [0.0] * len(codes)
+    elif len(title_row_x_shifts) < len(codes):
+        title_row_x_shifts = list(title_row_x_shifts) + [0.0] * (len(codes) - len(title_row_x_shifts))
+
+    # Row-major table
+    table_handles: list[list[Line2D]] = []
+    table_labels: list[list[str]] = []
+
+    # Header row: empty cell + (invisible) code headers
+    header_handles: list[Line2D] = [Line2D([], [], linestyle="none", marker="", markersize=0)]
+    header_labels: list[str] = [""]
+    for _ in codes:
+        header_handles.append(Line2D([], [], linestyle="none", marker="", markersize=0))
+        header_labels.append("")
+    table_handles.append(header_handles)
+    table_labels.append(header_labels)
+
+    # Data rows: each m-value gets a row
+    for m in all_m:
+        row_handles: list[Line2D] = [Line2D([], [], linestyle="none", marker="", markersize=0)]
+        row_labels: list[str] = [str(m)]
+
+        for code in codes:
+            if m in legend_colors[code]:
+                linestyle = "-"
+                if legend_styles is not None:
+                    linestyle = legend_styles.get(code, {}).get(m, "-")
+                row_handles.append(Line2D([0, 1], [0, 0], color=legend_colors[code][m], linewidth=linewidth, linestyle=linestyle))
+                row_labels.append("")
+            else:
+                row_handles.append(Line2D([], [], linestyle="none", alpha=0))
+                row_labels.append("")
+
+        table_handles.append(row_handles)
+        table_labels.append(row_labels)
+
+    # Flatten row-major table into column-major list for legend
+    handles: list[Line2D] = []
+    labels: list[str] = []
+    for c in range(ncol):
+        for r in range(nrow):
+            handles.append(table_handles[r][c])
+            labels.append(table_labels[r][c])
     
-    # Create a transform that clips at the original x limit
-    # This works by creating a bbox in data coordinates
+    # Position legend
+    if vertical_plots:
+        loc = "lower center"
+        bbox_to_anchor = (0.5, 0.02 + legend_y_offset)
+    else:
+        loc = "lower center"
+        bbox_to_anchor = (0.5, -0.08 + legend_y_offset)
     
-    # Define the clipping path as a rectangle
-    clip_path = Path([
-        [xlim[0], ylim[0]],
-        [original_xlim, ylim[0]],
-        [original_xlim, ylim[1]],
-        [xlim[0], ylim[1]],
-        [xlim[0], ylim[0]]
-    ])
+    legend = fig.legend(
+        handles, labels,
+        ncol=ncol,
+        loc=loc,
+        bbox_to_anchor=bbox_to_anchor,
+        fontsize=fontsize + 2,
+        columnspacing=0.7,
+        labelspacing=0.2,
+        handletextpad=0.5,
+        borderaxespad=0.5,
+        frameon=False
+    )
     
-    clip_patch = mpatches.PathPatch(clip_path, transform=ax.transData, visible=False)
+    # Make header row invisible (but keeps table structure)
+    header_indices = [c * nrow for c in range(ncol)]
+    for idx in header_indices:
+        legend.get_texts()[idx].set_alpha(0)
     
-    # Apply clipping to all grid lines
-    for line in ax.get_xgridlines():
-        line.set_clip_path(clip_patch)
-        line.set_clip_on(True)
+    # Now manually add visible header labels above the legend
+    fig.canvas.draw()  # Need to draw to get positions
     
-    for line in ax.get_ygridlines():
-        line.set_clip_path(clip_patch)
-        line.set_clip_on(True)
+    # Get positions of the header text elements to place our visible text
+    legend_texts = legend.get_texts()
+    renderer = fig.canvas.get_renderer()
+    legend_bbox = legend.get_window_extent(renderer)
+    y_display = legend_bbox.y1 + (title_row_y_shift * fig.dpi / 72.0)
+    
+    # Add visible text for code headers positioned above their columns
+    for i, code in enumerate(codes):
+        # Get the position of the invisible header text (x from its bbox center)
+        header_idx = header_indices[i + 1]  # +1 to skip empty cell
+        header_text = legend_texts[header_idx]
+        header_bbox = header_text.get_window_extent(renderer)
+        x_display = (header_bbox.x0 + header_bbox.x1) / 2.0
+        x_display += title_row_x_shifts[i] * fig.dpi / 72.0
+
+        x_fig, y_fig = fig.transFigure.inverted().transform((x_display, y_display))
+
+        fig.text(
+            x_fig, y_fig, code,
+            ha='center', va='center',
+            fontsize=fontsize + 2, fontweight='bold',
+            transform=fig.transFigure
+        )
+    
+    # ---- GKP: separate element to the right of the main legend ----
+    if with_gkp and "gkp" in legend_colors:
+        gkp_data = legend_colors["gkp"]
+        gkp_m = list(gkp_data.keys())[0]       # single entry
+        gkp_color = gkp_data[gkp_m]
+        gkp_linestyle = "-"
+        if legend_styles is not None and "gkp" in legend_styles:
+            gkp_linestyle = list(legend_styles["gkp"].values())[0]
+
+        # Reference point: right edge, vertical centre of the main legend
+        legend_bbox = legend.get_window_extent(renderer)
+        gkp_x_display = legend_bbox.x1 + gkp_x_offset * fig.dpi / 72.0
+        gkp_y_center  = (legend_bbox.y0 + legend_bbox.y1) / 2.0 + gkp_y_offset * fig.dpi / 72.0
+
+        # Convert to figure coordinates
+        gkp_x_fig, gkp_y_fig = fig.transFigure.inverted().transform(
+            (gkp_x_display, gkp_y_center)
+        )
+
+        # Draw the line sample using fig.axes trick: place a small legend-like
+        # annotation consisting of a header text + a colored line below it.
+        # Header ("gkp") — aligned with the other headers' y-level
+        header_y_fig = fig.transFigure.inverted().transform(
+            (gkp_x_display, y_display)
+        )[1]
+
+        fig.text(
+            gkp_x_fig, header_y_fig, "gkp",
+            ha='center', va='center',
+            fontsize=fontsize + 2, fontweight='bold',
+            transform=fig.transFigure
+        )
+
+        # Colored line sample: draw a horizontal line at the centre
+        # Make it longer so dash patterns are visible
+        # Shorter line for horizontal layout to avoid overlap
+        line_half_len_fig = 0.02 if not vertical_plots else 0.05  # half-length in figure coords
+        line = Line2D(
+            [gkp_x_fig - line_half_len_fig, gkp_x_fig + line_half_len_fig],
+            [gkp_y_fig, gkp_y_fig],
+            color=gkp_color, linewidth=linewidth,
+            linestyle=gkp_linestyle,
+            transform=fig.transFigure, clip_on=False
+        )
+        fig.add_artist(line)
+    
+    # Add grey background covering entire legend including GKP (horizontal layout only)
+    if not vertical_plots:
+        fig.canvas.draw()  # Ensure positions are updated
+        renderer = fig.canvas.get_renderer()
+        legend_bbox = legend.get_window_extent(renderer)
+        
+        # Determine the extent including GKP if present
+        if with_gkp and "gkp" in legend_colors:
+            # GKP extends to the right
+            gkp_right_x = gkp_x_display + line_half_len_fig * fig.dpi
+            left_x = legend_bbox.x0 - bg_padding_left
+            right_x = max(legend_bbox.x1, gkp_right_x) + bg_padding_right
+            top_y = legend_bbox.y1 + (title_row_y_shift * fig.dpi / 72.0) + bg_padding_top
+            bottom_y = legend_bbox.y0 - bg_padding_bottom
+        else:
+            left_x = legend_bbox.x0 - bg_padding_left
+            right_x = legend_bbox.x1 + bg_padding_right
+            top_y = legend_bbox.y1 + (title_row_y_shift * fig.dpi / 72.0) + bg_padding_top
+            bottom_y = legend_bbox.y0 - bg_padding_bottom
+        
+        # Convert to figure coordinates
+        left_fig, bottom_fig = fig.transFigure.inverted().transform((left_x, bottom_y))
+        right_fig, top_fig = fig.transFigure.inverted().transform((right_x, top_y))
+        
+        # Add background rectangle
+        from matplotlib.patches import FancyBboxPatch
+        bg_rect = FancyBboxPatch(
+            (left_fig, bottom_fig),
+            right_fig - left_fig,
+            top_fig - bottom_fig,
+            boxstyle="round,pad=0.02",
+            transform=fig.transFigure,
+            facecolor='lightgrey',
+            alpha=0.15,
+            edgecolor='darkgrey',
+            linewidth=1.8,
+            zorder=-1
+        )
+        fig.add_artist(bg_rect)
+    
+    return legend
         
 
 
 def _plot_results(
     # Mandatory inputs:
-    per_code_results: dict[CodeTypeLiteral, CostPerLegsPerNoiseDict],
+    per_code_results: dict[_CodeTypes, CostPerLegsPerNoiseDict],
     x_vec_name: Literal["γ", "gamma", "r", "num_photons"],
     x_vec: list[float],
     measurement: MeasurementTypeLiteral,
@@ -406,16 +579,17 @@ def _plot_results(
     # defaults for plotting:
     grid: Literal["on", "off", "weak"] = "weak",
     fig_dpi: int = 500,
-    vertical_plots: bool = False,
-    figure_name_extra: str = "",
-    N: int|None = None,
+    vertical_plots: bool  = False,
     _connected_plots:bool = False,
-    _text_on_plots:bool = True,
+    figure_name_prefix: str = "",
+    figure_name_extra: str = "",
+    N: int|_NumMomentsFuncType|None = None,
+    label_style: Literal["inline", "inline-adjusted", "legend"] = "legend",
     text_font_size:int = 16,
     text_legend_on_plot_font_size:int = 12, # only used if _text_on_plots is True
     _adjust_ticks_font:bool = True,
     x_scale: Literal['linear', 'log'] = 'log',
-    figure_title: str = ""
+    figure_title: str = "",
 ):
     """ Plot the results from compute_cost_on_logical_codewords(). """
 
@@ -435,7 +609,10 @@ def _plot_results(
     ## ========= Constants =========:
     _linewidth = 3
     # _colors =  ["tab_blue", "tab_red"]
-    _colors =  ["blue", "red"]
+    _possible_colors =  ["blue", "red", 'green', 'gold']
+    _colors = _possible_colors[:len(codes)]
+    # line styles for different m values:
+    _line_styles = [':', '--', '-', '-.']
 
     ## ========= Plot =========:
     fig, axes = _axis_setup(
@@ -445,11 +622,11 @@ def _plot_results(
     )
     match x_vec_name:
         case "γ":
-            xlabel = _latex_toggled_str(r"$\gamma$", "γ")+" noise rate"
+            xlabel = "noise rate "+_latex_toggled_str(r"$\gamma$", "γ")
         case "r":
             xlabel = r'$r (%s)$ squeezing (displacement) strength'%(_latex_toggled_str(r'\alpha', 'α'))
         case "num_photons":
-            xlabel = _latex_toggled_str(r'$\bar{n}$', 'n') +" (mean number)"
+            xlabel = "mean number "+_latex_toggled_str(r'$\bar{n}$', 'n')
     # Loss plot:
     y_label = _ylabel_for_measurement(measurement, noise_method, code_basis=loss_basis, noise="loss")
     axes["loss"].set_xlabel(xlabel , fontsize=text_font_size)
@@ -478,16 +655,28 @@ def _plot_results(
 
 
     legend_colors: dict[str, dict[int, _RgbFloatTuple]] = {code: {} for code in codes}
+    legend_styles: dict[str, dict[int, str]] = {code: {} for code in codes}
 
     plot_style = dict(
         linewidth = _linewidth
     )
 
+    # Storage for label data (used in inline-adjusted mode)
+    label_data_per_axis: dict[BosonicNoiseType, list[tuple[tuple[float, float], str, dict]]] = {
+        "loss": [],
+        "dephasing": []
+    }
+
     for code, base_color in zip(codes, _colors, strict=True):
-        code = type_cast(CodeTypeLiteral, code)
+        code = type_cast(_CodeTypes, code)
         results = per_code_results[code]
         num_m = len(results)
-        colors = color_shades(base_color, num_m+1)[:-1]  # Skip the darkest color
+
+
+        if code=="gkp":
+            colors = [base_color]
+        else:
+            colors = color_shades(base_color, num_m+1)[:-1]  # Skip the darkest color
 
         for noise_type, ax in axes.items():
             noise_type = type_cast(BosonicNoiseType, noise_type)
@@ -498,30 +687,69 @@ def _plot_results(
 
             for j, (m, costs) in enumerate(results.items()):
                 costs_per_noise = costs[noise_type]
+
+                if code=="gkp":
+                    line_style = "-."
+                else:
+                    line_style = _line_styles[j % len(_line_styles)]
+
                 y_vec = [costs[basis] for costs in costs_per_noise]
 
                 color = colors[j]
                 legend_colors[code][m] = color
+                legend_styles[code][m] = line_style
 
                 label = f"{m}"
-                ax.plot(x_vec, y_vec, label=label, color=color, **plot_style)  #type: ignore
+                ax.plot(x_vec, y_vec, label=label, color=color, linestyle=line_style, **plot_style)  #type: ignore
 
-                ## add label next to final point:
-                if _text_on_plots:
-                    x_dif = x_vec[1] - x_vec[0]
+                ## Handle inline labels
+                if label_style in ["inline", "inline-adjusted"]:
+                    x_dif = x_vec[1] - x_vec[0] if len(x_vec) > 1 else 1.0
                     final_graph_point = (x_vec[-1], y_vec[-1])
                     text_pos = _get_text_pos(final_graph_point, code, m, noise_type, x_scale=x_scale, x_dif=x_dif)
                     text = r"$\textbf{%s}$ $\mathbf{%s}$" % (code, m)
-                    ax.text(*text_pos, text, fontsize=text_legend_on_plot_font_size, ha='left', va='center')
+                    text_kwargs = dict(fontsize=text_legend_on_plot_font_size, ha='left', va='center')
+                    
+                    if label_style == "inline":
+                        # Direct inline labels (original behavior)
+                        ax.text(*text_pos, text, **text_kwargs)
+                    else:
+                        # Store for later adjustment
+                        label_data_per_axis[noise_type].append((text_pos, text, text_kwargs))
 
-    if _text_on_plots:
+    # Apply adjusted label positions if needed
+    if label_style == "inline-adjusted":
+        for noise_type, ax in axes.items():
+            noise_type = type_cast(BosonicNoiseType, noise_type)
+            label_data = label_data_per_axis[noise_type]
+            
+            if label_data:
+                # Adjust positions to avoid overlap
+                adjusted_positions = _adjust_label_positions_to_avoid_overlap(
+                    ax, label_data, 
+                    min_y_distance_factor=1.5,
+                    x_scale=x_scale,
+                    y_scale=y_scale
+                )
+                
+                # Add labels with adjusted positions
+                for (orig_pos, text, kwargs), adjusted_pos in zip(label_data, adjusted_positions):
+                    ax.text(*adjusted_pos, text, **kwargs)
+
+    # Handle axis extension and legend
+    if label_style in ["inline", "inline-adjusted"]:
         for ax in axes.values():
             _extend_axis_without_grid(ax, extension_factor=0.25)
-
-    if _text_on_plots:
         legend = None
+    elif label_style == "legend":
+        legend = _add_unified_legend_for_both_axes(
+            fig, axes, legend_colors,
+            legend_styles=legend_styles,
+            linewidth=_linewidth, 
+            vertical_plots=vertical_plots
+        )
     else:
-        legend = _add_outside_legend(fig, legend_colors, linewidth=_linewidth, legend_layout="2-rows", vertical_plots=vertical_plots)
+        raise ValueError(f"Unknown label_style: {label_style!r}")
 
     if figure_title != "":
         fig.suptitle(figure_title, fontsize=text_font_size)
@@ -532,10 +760,10 @@ def _plot_results(
             for axis in [ax.xaxis, ax.yaxis]:
                 axis.set_tick_params(labelsize=text_font_size)
 
-    if _text_on_plots:
+    if label_style in ["inline", "inline-adjusted"]:
         plt.tight_layout()  
     else:
-        plt.tight_layout(rect=(0, 0.05, 1, 1))  # Reserve space at bottom for legend
+        plt.tight_layout(rect=(0, 0.12, 1, 1))  # Reserve space at bottom for legend
 
     if _connected_plots:
         plt.subplots_adjust(hspace=0.001)
@@ -545,21 +773,25 @@ def _plot_results(
     print("Plotted.")
 
     file_name = ""\
+        + figure_name_prefix \
         + measurement  \
         + f" - {noise_method}" \
-        + (f" - N={N}" if N is not None else "") \
-        + (f" - {figure_name_extra}" if figure_name_extra else "") 
+        + (f" - N={N}" if isinstance(N, (int,float)) else "") \
+        + (f" - {figure_name_extra}" if figure_name_extra else "") \
+        + (f" - horizontal" if not vertical_plots else "") 
     
-    save_figure(plt.gcf(), file_name, dpi=fig_dpi, transparent=True, extensions=['pdf', 'png'])
+    
+    save_figure(plt.gcf(), file_name, dpi=fig_dpi, transparent=True, extensions=['pdf', 'png', 'svg'])
     print("Saved.")
 
     return fig, axes, legend
 
 
 def plot_full_codewords_numeric_figure_x_is_gamma(
-    num_moments : int = 200,
+    num_moments : int = 100,
     num_gammas:int = 5,
     num_code_states:int = 3,
+    with_gkp:bool = True,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00"
     noise_method : NoiseOptionLiteral = "kraus-KL-style",  # "simulated", "kraus-KL-style", "kraus-channel"
     mean_photon_number : float = 2.0
@@ -567,15 +799,21 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
 
     ## ========= Inputs =========:
     x_vec_name = "γ"
-
-    γ_vec = np.logspace(-16, -5, num_gammas).tolist()
+    γ_vec = np.logspace(-7, -3, num_gammas).tolist()
+    if with_gkp:
+        codes = ["squeeze", "cat", "binomial", "gkp"]
+    else:
+        codes = ["squeeze", "cat", "binomial"]
 
     ## ========= Compute =========:
-    per_code_results : dict[CodeTypeLiteral, CostPerLegsPerNoiseDict] = dict()
+    per_code_results : dict[_CodeTypes, CostPerLegsPerNoiseDict] = dict()
 
-    for code in ProgressBar(["squeeze", "cat"], prefix="different code  "):
+    for code in ProgressBar(codes, prefix="different code  "):
         ProgressBar.newest().append_extra_str(f"{code!r}")
-        code = type_cast(CodeTypeLiteral, code)
+        code = type_cast(_CodeTypes, code)
+
+        if code=="gkp": 
+            num_code_states = 1
 
         results = compute_cost_on_logical_codewords(
             fixed_value=mean_photon_number,
@@ -597,43 +835,57 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
         x_vec=γ_vec,
         measurement=measurement,
         noise_method=noise_method,
+        figure_name_prefix="x-is-gamma",
+        figure_name_extra=f"n-bar={mean_photon_number}",
         N=num_moments,
         loss_basis="main",
-        dephasing_basis="dual",
+        dephasing_basis="dual"
     )
 
     ## Wait for user to close:
     draw_now()
-    input("Press Enter to close the plots and end the program...")
+    # input("Press Enter to close the plots and end the program...")
 
 
+def _num_moments_func(mean_n: float) -> int:
+    """Determine number of moments based on mean photon number."""
+    n = 50*int(np.ceil(mean_n))
+    n = max(n, 50)  # enforce a minimum of 50 moments for low photon numbers
+    n = min(n, 200) # enforce a maximum of 200 moments for high photon numbers to keep runtime reasonable
+    return n
 
-def plot_full_codewords_numeric_figure_x_is_r(
-    num_moments : int = 300,
-    num_photon_num: int = 61,
-    max_photon_num: float = 5.0,
+
+def plot_full_codewords_numeric_figure_x_is_nbar(
+    num_moments: int|_NumMomentsFuncType = _num_moments_func,
+    photon_num_vec = [float(n) for n in np.linspace(0.0, 5.0, 31)],
     num_code_states:int = 3,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00", "fidelity01", "fidelity00"
     noise_method : NoiseOptionLiteral = "kraus-KL-style",  # "simulated", "kraus" "kraus-channel"
-    γ = 1e-6
+    loss_basis: LogicalBasisName = "main",
+    dephasing_basis: LogicalBasisName = "dual",
+    γ = 1e-2
 ) -> None:
     
     ## ========= Inputs =========:
+    photon_num_vec = [n for n in photon_num_vec if n >= 0.5]
     x_vec_name = "num_photons"
-    photon_num_vec  = np.linspace(1e-3, max_photon_num, num_photon_num).tolist()
-    photon_num_vec += np.linspace(5, 10, num_photon_num).tolist()
     γ_str = _latex_toggled_str(r'$\gamma$', '$γ$')
     # Format gamma for title (LaTeX math-mode if enabled) and for filenames (plain sci)
-    gamma_title_str = _format_float_for_title(γ, Globals.LaTeX_RENDERING)
-    gamma_file_str = _format_float_for_title(γ, False)
+    gamma_title_str = format_float_for_as_str(γ, Globals.LaTeX_RENDERING)
+    gamma_file_str = format_float_for_as_str(γ, False)
 
+
+    print(f"photon_num_vec = {photon_num_vec}")
 
     ## ========= Compute =========:
-    per_code_results : dict[CodeTypeLiteral, CostPerLegsPerNoiseDict] = dict()
+    per_code_results : dict[_CodeTypes, CostPerLegsPerNoiseDict] = dict()
 
-    for code in ProgressBar(["squeeze", "cat"], prefix="different code  "):
-        code = type_cast(CodeTypeLiteral, code)
+    for code in ProgressBar(["squeeze", "cat", "binomial", "gkp"], prefix="different code  "):
+        code = type_cast(_CodeTypes, code)
         ProgressBar.newest().append_extra_str(f"code={code}")
+
+        if code=="gkp": 
+            num_code_states = 1
 
         results = compute_cost_on_logical_codewords(
             fixed_param_name="γ",
@@ -644,7 +896,8 @@ def plot_full_codewords_numeric_figure_x_is_r(
             num_code_states=num_code_states,
             code=code,
             measurement=measurement,
-            noise_method=noise_method
+            noise_method=noise_method,
+            specific_bases=_SpecificBasisOptionType(loss=loss_basis, dephasing=dephasing_basis)
         )
         per_code_results[code] = results 
 
@@ -655,16 +908,21 @@ def plot_full_codewords_numeric_figure_x_is_r(
         x_vec=photon_num_vec,
         measurement=measurement,
         noise_method=noise_method,
-        loss_basis="dual",
-        dephasing_basis="main",
-        figure_name_extra=f"num-particles - γ={gamma_file_str}",
+        loss_basis=loss_basis,
+        dephasing_basis=dephasing_basis,
+        figure_name_prefix="x-is-nbar",
+        figure_name_extra=f"γ={gamma_file_str}",
         N=num_moments,
         x_scale = 'linear',
-        figure_title=f"Noise rate {γ_str} = {gamma_title_str}"
+        # figure_title=f"Noise rate {γ_str} = {gamma_title_str}"
     )
 
+    draw_now()
+    # input("Press Enter to close the plots and end the program...")
 
 
 if __name__ == "__main__":
-    plot_full_codewords_numeric_figure_x_is_gamma()
-    # plot_full_codewords_numeric_figure_x_is_r()
+    # plot_full_codewords_numeric_figure_x_is_gamma()
+    plot_full_codewords_numeric_figure_x_is_nbar()
+    draw_now()
+    input("Press Enter to close the plots and end the program...")

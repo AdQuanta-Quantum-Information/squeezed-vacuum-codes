@@ -110,8 +110,7 @@ def close_all():
     plt.close('all')
 
 
-def draw_now():
-    sleep_time: float = 0.01
+def draw_now(sleep_time: float = 0.01) -> None:
     time.sleep(sleep_time)
     plt.pause(sleep_time)
     time.sleep(sleep_time)

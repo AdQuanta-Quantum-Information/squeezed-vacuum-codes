@@ -33,7 +33,7 @@ from src import bosonic_operators
 _NumberOrSympyExpr = TypeVar('_NumberOrSympyExpr', float, sp.Expr)
 
 
-NUM_MOMENTS : Final[int] = 100
+TESTS_NUM_MOMENTS : Final[int] = 100
 DEFAULT_L_CUT_OFF : Final[int] = 1_000
 DEFAULT_UPPER_BOUND_FOR_SEARCH : Final[float] = 10.0
 
@@ -119,6 +119,11 @@ def _analytic_mean_photon_number_for_squeezed_k_state(m:int, k:int, L_threshold:
         result = result.subs({L_symbol: L_threshold})  #type: ignore
 
     return result
+
+
+def _analytic_mean_photon_number_for_binomial_k_state(m: int, logical_value: int) -> sp.Expr:
+    # For qubit (d=2) binomial codes: <n> = (m/2)*(r) with r ≡ N
+    return m * r_symbol / 2
 
 
 def _analytic_mean_photon_number_for_cat_k_state(m:int, k:int) -> sp.Expr:
@@ -345,9 +350,25 @@ def mean_photon_number_for_squeezed_codeword(m:int, r:float, logical_value:int, 
         return _numerical_exact_summation_mean_photon_number_for_squeezed_codeword(m, r, k, L_cut_off)
 
 
+def mean_photon_number_for_binomial_codeword(m:int, r:float, logical_value:int, analytic_substitution:bool=True, _k:int|None=None) -> float:
+    ## Ignore logical value and use k if provided:
+    if _k is not None:
+        raise NotImplementedError("Binomial code mean photon number not implemented for k input.")
+    
+    # Ignore analytic substitution == False:
+    analytic_substitution = True
+    analytical_expression = _analytic_mean_photon_number_for_binomial_k_state(m, logical_value)
+    numerical_value = analytical_expression.subs({r_symbol:r}).evalf().doit()
+    return float(numerical_value)
+
+
+def mean_photon_number_for_gkp_codeword(m:int, nbar:float, logical_value:int, analytic_substitution:bool=False) -> float:
+    return nbar  # currently, the input for the gkp code is the single-parameter n-bar
+
+
 @cache(ram=True, disk=True)
 def find_parameter_for_target_mean_photon_number(
-    code_type:Literal['cat', 'squeeze'],
+    code_type:_CodeTypes,
     m:int,
     logical_value:int,
     target_mean_photon_number:float,
@@ -366,7 +387,7 @@ def find_parameter_for_target_mean_photon_number(
 
 
 def get_single_input_function_from_symbolic_expression(
-    code_type:Literal['cat', 'squeeze'],        
+    code_type:_CodeTypes,        
     m:int,
     logical_value:int
 ) -> Callable[[float], float]:
@@ -385,7 +406,7 @@ def get_single_input_function_from_symbolic_expression(
 
 
 def get_mean_photon_number(
-    code_type:Literal['cat', 'squeeze'],        
+    code_type:_CodeTypes,        
     m:int,
     logical_value:int,
     parameter:float,
@@ -397,6 +418,10 @@ def get_mean_photon_number(
             return mean_photon_number_for_cat_codeword(m, parameter, logical_value, analytic_substitution=analytic_substitution)
         case 'squeeze':
             return mean_photon_number_for_squeezed_codeword(m, parameter, logical_value, analytic_substitution=analytic_substitution, L_cut_off=cut_off)
+        case "binomial":
+            return mean_photon_number_for_binomial_codeword(m, parameter, logical_value, analytic_substitution=analytic_substitution)
+        case "gkp":
+            return mean_photon_number_for_gkp_codeword(m, parameter, logical_value, analytic_substitution=analytic_substitution)
         case _:
             raise ValueError(f"Unknown code type: {code_type!r}")
 
@@ -411,8 +436,8 @@ def _all_close_to_zero_in_list(list_:list[float], tol:float=1e-6) -> bool:
 
 
 def _test1():
-    state_1 = basis(NUM_MOMENTS, 3)  # Fock state |3>
-    state_2 = (basis(NUM_MOMENTS, 2) + basis(NUM_MOMENTS, 4)).unit()  # Superposition state (|2> + |4>)/sqrt(2)
+    state_1 = basis(TESTS_NUM_MOMENTS, 3)  # Fock state |3>
+    state_2 = (basis(TESTS_NUM_MOMENTS, 2) + basis(TESTS_NUM_MOMENTS, 4)).unit()  # Superposition state (|2> + |4>)/sqrt(2)
 
     mean_photon_number_1 = qutip_mean_photon_number(state_1)
     mean_photon_number_2 = qutip_mean_photon_number(state_2)
@@ -443,7 +468,7 @@ def _test2_squeezed_codes(
         for r in ProgressBar(r_vals, prefix="per r: "):
             ProgressBar.newest().append_extra_str(f" r={r:.3f}")
 
-            qutip_state = simple_m_legged_state(m, r, num_moments=NUM_MOMENTS, code_type='squeeze', 
+            qutip_state = simple_m_legged_state(m, r, num_moments=TESTS_NUM_MOMENTS, code_type='squeeze', 
                                         qubit_logical_value=k,
                                         num_qudit_values=m)
                 
@@ -536,7 +561,7 @@ def _test3_infinite_vs_finite_series(
         times.append(t1 - t0)
 
     ## Qutip calculation for comparison:
-    state = simple_m_legged_state(m, r, num_moments=NUM_MOMENTS, code_type='squeeze', 
+    state = simple_m_legged_state(m, r, num_moments=TESTS_NUM_MOMENTS, code_type='squeeze', 
                                   qubit_logical_value=logical_value)
     qutip_value = qutip_mean_photon_number(state)
 
@@ -565,7 +590,7 @@ def _test3_infinite_vs_finite_series(
 def _test4_cat_state(
     m:int = 2,
     alpha_vals:list[float] = np.linspace(0.01, 2.5, 15).tolist(),
-    num_moments:int = NUM_MOMENTS
+    num_moments:int = TESTS_NUM_MOMENTS
 ):
     from matplotlib import pyplot as plt
     
@@ -660,16 +685,16 @@ def _test6_plot_mean_photons_params_for_different_codes(
 
     cat = []
     squeeze = []
+    binomial = []
 
     lists = dict(
         cat=cat,
-        squeeze=squeeze
+        squeeze=squeeze,
+        binomial=binomial
     )
 
     for target_mean_photon_number in ProgressBar(target_mean_photon_numbers, prefix="per target mean photons: "):
-        for code_type in ProgressBar(['cat', 'squeeze'], prefix="per code type: "):
-
-            code_type = cast(Literal['squeeze', 'cat'], code_type)
+        for code_type in ProgressBar(_CodeTypes.__args__, prefix="per code type: "):
 
             parameter = find_parameter_for_target_mean_photon_number(
                 code_type=code_type,
@@ -694,6 +719,55 @@ def _test6_plot_mean_photons_params_for_different_codes(
 
     print("Done.")
 
+
+
+
+
+def _test7_test_binomial_code(
+    m:int = 2,
+    strength_vals:list[float] = np.linspace(0.01, 5, 101).tolist(),
+    num_moments:int = TESTS_NUM_MOMENTS,
+    code_type:_CodeTypes = 'binomial'
+):
+    from matplotlib import pyplot as plt
+    
+    fig, ax = plt.subplots()    
+
+    ax.set_xlabel("strength r")
+    ax.set_ylabel("Mean Photon Number")
+    ax.set_title(f"{code_type}: Mean Photon Number vs Strength for m={m}\n")   
+  
+                    
+    for l in ProgressBar([0, 1], prefix="logical: "):
+
+        qutip_vals = []
+        analytical = []
+
+        for r in ProgressBar(strength_vals, prefix="per r : "):
+            state = simple_m_legged_state(m, r, num_moments=num_moments, code_type=code_type, 
+                                        qubit_logical_value=l,
+                                        num_qudit_values=m)
+            
+            _qutip_mean_photons = qutip_mean_photon_number(state)
+            analytical_photon_number = get_mean_photon_number(code_type, m, l, r)
+
+            ## Append to lists:
+            qutip_vals.append(_qutip_mean_photons)
+            analytical.append(analytical_photon_number)
+
+        ## Plot:
+        line = plt.plot(strength_vals, qutip_vals, label=f"l={l}", marker='o', linestyle='None')
+        color = line[0].get_color()
+        plt.plot(strength_vals, analytical, marker='None', color=color, linestyle='--')
+
+        ax.legend()
+        plt.show()
+        plt.pause(0.1)
+
+    plt.show()
+    plt.pause(0.1)
+    print("Done.")
+
     
 
 if __name__ == "__main__":
@@ -702,7 +776,8 @@ if __name__ == "__main__":
     # _test3_infinite_vs_finite_series()
     # _test4_cat_state()
     # _test5_get_parameter_for_given_mean_photons()
-    _test6_plot_mean_photons_params_for_different_codes()
+    # _test6_plot_mean_photons_params_for_different_codes()
+    _test7_test_binomial_code()
 
     print("Done.")
 

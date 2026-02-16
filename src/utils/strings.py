@@ -399,3 +399,40 @@ def mat_str_with_leading_text(mat:np.matrix, text:str) -> str:
     text_width = str_width(text, last_line_only=True)
     s = mat_str(mat)
     return text + insert_spaces_in_newlines(s, num_spaces=text_width)
+
+
+
+
+def format_float_for_as_str(value: float, use_latex: bool) -> str:
+    """Format a float for use in a figure title.
+
+    If use_latex is True, return a LaTeX math-mode string like
+    "$1\times10^{-6}$" so the TeX engine renders a proper exponent.
+    Otherwise return a compact plain string in scientific notation like
+    "1e-06".
+    """
+    if value == 0:
+        return r"$0$" if use_latex else "0"
+
+    if use_latex:
+        s = "{:.1e}".format(value)
+        mantissa_str, exp_str = s.split("e")
+        # clean mantissa (remove trailing .0)
+        try:
+            mant = float(mantissa_str)
+        except ValueError:
+            # fallback
+            return rf"${s}$"
+        # drop .0 when it's integer
+        if mant.is_integer():
+            mant_display = str(int(mant))
+        else:
+            mant_display = str(mant)
+        exp = int(exp_str)
+        # Return a LaTeX math expression
+        if mant_display == "1":
+            # omit the multiplicative 1 for aesthetics
+            return rf"$10^{{{exp}}}$"
+        return rf"${mant_display}\times10^{{{exp}}}$"
+    else:
+        return "{:.1e}".format(value)
