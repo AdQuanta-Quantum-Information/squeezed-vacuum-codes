@@ -788,7 +788,7 @@ def _plot_results(
 
 
 def plot_full_codewords_numeric_figure_x_is_gamma(
-    num_moments : int = 100,
+    num_moments : int = 300,
     num_gammas:int = 5,
     num_code_states:int = 3,
     with_gkp:bool = True,
@@ -800,6 +800,7 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
     ## ========= Inputs =========:
     x_vec_name = "γ"
     γ_vec = np.logspace(-7, -3, num_gammas).tolist()
+    γ_vec += np.logspace(-3, -1, 3).tolist()[1:]
     if with_gkp:
         codes = ["squeeze", "cat", "binomial", "gkp"]
     else:
@@ -922,7 +923,7 @@ def plot_full_codewords_numeric_figure_x_is_nbar(
 
 
 if __name__ == "__main__":
-    # plot_full_codewords_numeric_figure_x_is_gamma()
-    plot_full_codewords_numeric_figure_x_is_nbar()
+    plot_full_codewords_numeric_figure_x_is_gamma()
+    # plot_full_codewords_numeric_figure_x_is_nbar()
     draw_now()
     input("Press Enter to close the plots and end the program...")
