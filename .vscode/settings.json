@@ -2,6 +2,7 @@
     "chat.tools.terminal.autoApprove": {
         "New-Item": true,
         "Out-Null": true,
-        "Move-Item": true
+        "Move-Item": true,
+        "c:/git_repos/squeezed-vacuum-codes/.venv/Scripts/python.exe": true
     }
 }

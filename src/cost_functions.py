@@ -176,6 +176,11 @@ def kraus_map_overlap_matrices(
     use_dual_code: bool = False,
 ) -> NDArray[np.object_]:  # a matrix of overlap matrices
 
+
+    if m==2 and np.isclose(r, 1.3063149668926095) and γ == 1.0 and N == 400 and code_type == "squeeze" and noise_type == "loss" and use_dual_code == False:
+        pass
+
+
     # Helper function wrapper already taking everything except j:
     def _kraus_j(j:int) -> Qobj:
         return kraus_operator_j(noise_type, N, γ, j)
@@ -255,6 +260,13 @@ def kraus_map_overlap_matrices(
             plt.ylabel("Kraus Operator Norm")
             draw_now()
 
+    # check if for some reason we ended up with all nans (which should never happen):
+    # check if it has no items, i.e., empty:
+    if overlap_matrices.size == 0:
+        raise ValueError("Overlap matrices array is empty! This should never happen. Check the kraus operators and the cost threshold.")
+    if np.isnan(overlap_matrices).all():
+        raise ValueError("All overlap matrices are NaN! This should never happen. Check the kraus operators and the cost threshold.")
+
     return overlap_matrices
 
 
@@ -332,6 +344,7 @@ def _compute_cost_given_m_r_and_noise(
     **kwargs
 ) -> float:
                
+
     match noise_method:
         case "kraus-KL-style":
             overlap_matrices = kraus_map_overlap_matrices(m, r, γ, num_moments, code_type, noise_type, use_dual_code)

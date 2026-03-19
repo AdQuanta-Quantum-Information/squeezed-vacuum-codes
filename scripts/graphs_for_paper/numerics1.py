@@ -788,7 +788,7 @@ def _plot_results(
 
 
 def plot_full_codewords_numeric_figure_x_is_gamma(
-    num_moments : int = 300,
+    num_moments : int = 400,
     num_gammas:int = 5,
     num_code_states:int = 3,
     with_gkp:bool = True,
@@ -801,6 +801,7 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
     x_vec_name = "γ"
     γ_vec = np.logspace(-7, -3, num_gammas).tolist()
     γ_vec += np.logspace(-3, -1, 3).tolist()[1:]
+    γ_vec += np.logspace(-1, +1, 5).tolist()[1:]
     if with_gkp:
         codes = ["squeeze", "cat", "binomial", "gkp"]
     else:
