@@ -154,7 +154,7 @@ def _solve_equation_with_optimization_tools(
     ## First try with a simple binary search, else, use scipy minimization:
     x_solution, y_solution = binary_search_callable_increasing(func, target_value, x_bounds)
 
-    assert np.isclose(y_solution, target_value, atol=1e-6)
+    assert np.isclose(y_solution, target_value, atol=1e-6), f"Binary search did not find a solution close enough to target: y_solution={y_solution} vs target={target_value}"
 
     return x_solution
 
@@ -257,9 +257,15 @@ def _numerical_exact_summation_mean_photon_number_for_cat_codeword(m:int, alpha:
 
     # Strip tiny imaginary component and return float
     imag_part = np.imag(result)
-    if not np.isclose(imag_part, 0.0, atol=1e-10):
-        # If the imaginary part is unexpectedly large, surface an informative error
-        raise AssertionError(f"Mean photon number has non-negligible imaginary part: {imag_part}")
+    real_part = np.real(result)
+    relative_imag_part = abs(imag_part) / max(abs(real_part), 1e-15)
+    if relative_imag_part > 1e-8:
+        # If the imaginary part is unexpectedly large relative to the real part,
+        # surface an informative error.
+        raise FloatingPointError(
+            f"Mean photon number has non-negligible imaginary part: imag={imag_part}, "
+            f"real={real_part}, relative={relative_imag_part}"
+        )
 
     return float(np.real(result))
 
@@ -304,6 +310,11 @@ def _numerical_exact_summation_mean_photon_number_for_squeezed_codeword(m:int, r
         numerator   +=  2 * n * a_kl
         denominator += a_kl
 
+
+        if abs(denominator) < 1e-300:
+            raise ZeroDivisionError(
+                f"Degenerate ratio in squeezed mean-photon summation: denominator~0 (m={m}, r={r}, k={k}, l={l})."
+            )
 
         result = numerator / denominator
 
@@ -744,21 +755,16 @@ def _test5_get_parameter_for_given_mean_photons(
 def _test6_plot_mean_photons_params_for_different_codes(
     m:int = 2,
     logical_value:int|Literal['+'] = "+",
-    target_mean_photon_numbers:list[float] = np.linspace(0.01, 5.01, 21).tolist()
+    target_mean_photon_numbers:list[float] = np.linspace(1.1, 5.01, 21).tolist()
 ) -> None:
     
     from matplotlib import pyplot as plt    
 
-    cat = []
-    squeeze = []
-    binomial = []
-    gkp = []
-
     lists = dict(
-        cat=cat,
-        squeeze=squeeze,
-        binomial=binomial,
-        gkp=gkp
+        cat=[],
+        squeeze=[],
+        binomial=[],
+        gkp=[]
     )
 
     for target_mean_photon_number in ProgressBar(target_mean_photon_numbers, prefix="per target mean photons: "):
@@ -776,8 +782,27 @@ def _test6_plot_mean_photons_params_for_different_codes(
     ## Plot:
     linewidth = 3.0
     plt.figure(figsize=(10, 6))
-    for code_type, params in lists.items():
-        plt.plot(target_mean_photon_numbers, params, label=code_type, linewidth=linewidth)
+    plot_order = ['cat', 'squeeze', 'gkp', 'binomial']
+    for code_type in plot_order:
+        params = lists[code_type]
+        linestyle = '--' if code_type in ['cat', 'gkp'] else ':'
+
+        # For m=2, binomial and gkp are effectively identical; draw binomial on top
+        # with markers so both traces remain visible.
+        marker = 'o' if code_type == 'binomial' else None
+        zorder = 5 if code_type == 'binomial' else 3
+        plt.plot(
+            target_mean_photon_numbers,
+            params,
+            label=code_type,
+            linewidth=linewidth,
+            linestyle=linestyle,
+            marker=marker,
+            markersize=4,
+            markevery=2,
+            zorder=zorder,
+        )
+        
     plt.xlabel("Target Mean Photon Number")
     plt.ylabel("Parameter")
     plt.title("Mean Photon Number Parameters for Different Codes")
