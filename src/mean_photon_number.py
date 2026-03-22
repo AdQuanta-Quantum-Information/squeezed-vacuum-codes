@@ -861,6 +861,119 @@ def _test7_test_binomial_code(
     plt.pause(0.1)
     print("Done.")
 
+
+
+lower_threshold_per_code: dict[_CodeTypes, float] = {
+    'cat': 0.5,
+    'squeeze': 1.0,
+    'binomial': 0.0,
+    'gkp': 0.0,
+}
+
+
+
+def _test8_parameter_solver_error_vs_qutip_mean(
+    m: int = 2,
+    logical_value: int | Literal['+'] = 0,
+    target_mean_photon_numbers: list[float] = np.linspace(0.1, 5.1, 21).tolist(),
+    num_moments: int = TESTS_NUM_MOMENTS,
+) -> None:
+    """For each code family, solve parameter-from-target and compare to Qutip mean photons.
+
+    Plots signed error: (Qutip mean photons) - (target mean photons).
+    """
+    from matplotlib import pyplot as plt
+
+    code_types: list[_CodeTypes] = ['cat', 'squeeze', 'binomial', 'gkp']
+    errors_per_code: dict[_CodeTypes, list[float]] = {code_type: [] for code_type in code_types}
+    targets_per_code: dict[_CodeTypes, list[float]] = {code_type: [] for code_type in code_types}
+
+    
+    for target_mean_photon_number in ProgressBar(target_mean_photon_numbers, prefix="per target mean photons: "):
+        for code_type in ProgressBar(code_types, prefix="per code type: "):
+            if target_mean_photon_number < lower_threshold_per_code[code_type]:
+                continue
+
+            m_for_code = 1 if code_type == 'gkp' else m
+
+            parameter = find_parameter_for_target_mean_photon_number(
+                code_type=code_type,
+                m=m_for_code,
+                logical_value=logical_value,
+                target_mean_photon_number=target_mean_photon_number,
+            )
+
+            if logical_value == '+':
+                state_0 = simple_m_legged_state(
+                    m_for_code,
+                    parameter,
+                    num_moments=num_moments,
+                    code_type=code_type,
+                    qubit_logical_value=0,
+                    num_qudit_values=2,
+                )
+                state_1 = simple_m_legged_state(
+                    m_for_code,
+                    parameter,
+                    num_moments=num_moments,
+                    code_type=code_type,
+                    qubit_logical_value=1,
+                    num_qudit_values=2,
+                )
+                qutip_state = (state_0 + state_1).unit()
+            else:
+                qutip_state = simple_m_legged_state(
+                    m_for_code,
+                    parameter,
+                    num_moments=num_moments,
+                    code_type=code_type,
+                    qubit_logical_value=logical_value,
+                    num_qudit_values=2,
+                )
+
+            qutip_mean_photons = qutip_mean_photon_number(qutip_state)
+            signed_error = qutip_mean_photons - target_mean_photon_number
+            targets_per_code[code_type].append(target_mean_photon_number)
+            errors_per_code[code_type].append(signed_error)
+
+    plt.figure(figsize=(10, 6))
+    line_styles = {
+        'cat': '-',
+        'squeeze': '--',
+        'binomial': '-.',
+        'gkp': ':',
+    }
+    markers = {
+        'cat': 'o',
+        'squeeze': 's',
+        'binomial': '^',
+        'gkp': 'D',
+    }
+
+    for code_type in code_types:
+        if len(targets_per_code[code_type]) == 0:
+            continue
+        plt.plot(
+            targets_per_code[code_type],
+            errors_per_code[code_type],
+            label=f"{code_type}",
+            linestyle=line_styles[code_type],
+            marker=markers[code_type],
+            markersize=4,
+            linewidth=2.0,
+            markevery=2,
+        )
+
+    plt.axhline(0.0, color='black', linestyle=':', linewidth=1.2, alpha=0.8)
+    plt.xlabel("Target Mean Photon Number")
+    plt.ylabel("Qutip Mean - Target Mean")
+    plt.title("Parameter Solver Error vs Qutip Mean Photon Number")
+    plt.legend()
+    plt.grid(True, alpha=0.35)
+    plt.show()
+
+    print("Done.")
+
     
 
 if __name__ == "__main__":
@@ -869,8 +982,9 @@ if __name__ == "__main__":
     # _test3_infinite_vs_finite_series()
     # _test4_cat_state()
     # _test5_get_parameter_for_given_mean_photons()
-    _test6_plot_mean_photons_params_for_different_codes()
+    # _test6_plot_mean_photons_params_for_different_codes()
     # _test7_test_binomial_code()
+    _test8_parameter_solver_error_vs_qutip_mean()
 
     print("Done.")
 

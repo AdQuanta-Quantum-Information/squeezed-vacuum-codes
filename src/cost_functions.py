@@ -79,6 +79,7 @@ class _SpecificBasisOptionType(TypedDict):
 ## Constants:
 PROG_BAR_SIGNIFICANT_DIGITS : Final[int] = 6
 NORMALIZE_LOGICAL_STATES_BEFORE_APPLYING_HADAMARD : Final[bool] = True
+TARGET_STATE_FOR_MEAN_NUMBER_CALCULATION : Final[int|Literal['+']] = "+"
 
 
 def _cache_function():
@@ -406,7 +407,7 @@ def _get_parameters_from_fixed_and_x(
                 r = find_parameter_for_target_mean_photon_number(
                     code_type=code,
                     m=m,
-                    logical_value=0,
+                    logical_value=TARGET_STATE_FOR_MEAN_NUMBER_CALCULATION,
                     target_mean_photon_number=value
                 )
             case _:
