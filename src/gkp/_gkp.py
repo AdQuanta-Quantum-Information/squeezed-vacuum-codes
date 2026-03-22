@@ -8,8 +8,8 @@ sqrt_pi = np.sqrt(np.pi)
 
 
 if __name__ == "__main__":
-    from __init__ import add_root_to_path
-    path = add_root_to_path()
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from src.visualizations import plot_light_states, plot_fock_distribution
 from src.utils.prints import ProgressBar
