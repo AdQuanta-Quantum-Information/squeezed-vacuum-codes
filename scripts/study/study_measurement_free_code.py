@@ -1,8 +1,10 @@
 #%%
-if __name__ == "__main__":
-	from pathlib import Path
-	import sys
-	sys.path.append(str(Path(__file__).parents[3]))
+try:
+	from scripts.study._bootstrap import add_root_to_path
+except ModuleNotFoundError:
+	from _bootstrap import add_root_to_path
+
+add_root_to_path()
 
 
 import numpy as np

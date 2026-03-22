@@ -743,7 +743,7 @@ def _test5_get_parameter_for_given_mean_photons(
 
 def _test6_plot_mean_photons_params_for_different_codes(
     m:int = 2,
-    logical_value:int = 0,
+    logical_value:int|Literal['+'] = "+",
     target_mean_photon_numbers:list[float] = np.linspace(0.01, 5.01, 21).tolist()
 ) -> None:
     
@@ -752,11 +752,13 @@ def _test6_plot_mean_photons_params_for_different_codes(
     cat = []
     squeeze = []
     binomial = []
+    gkp = []
 
     lists = dict(
         cat=cat,
         squeeze=squeeze,
-        binomial=binomial
+        binomial=binomial,
+        gkp=gkp
     )
 
     for target_mean_photon_number in ProgressBar(target_mean_photon_numbers, prefix="per target mean photons: "):
@@ -842,8 +844,8 @@ if __name__ == "__main__":
     # _test3_infinite_vs_finite_series()
     # _test4_cat_state()
     # _test5_get_parameter_for_given_mean_photons()
-    # _test6_plot_mean_photons_params_for_different_codes()
-    _test7_test_binomial_code()
+    _test6_plot_mean_photons_params_for_different_codes()
+    # _test7_test_binomial_code()
 
     print("Done.")
 

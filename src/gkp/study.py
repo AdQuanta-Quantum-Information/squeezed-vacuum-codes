@@ -7,7 +7,7 @@ in one place so notebooks/scripts can import from here and start quickly.
 import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
-from typing import Iterable
+from typing import Iterable, Literal
 
 
 try:
@@ -25,7 +25,13 @@ from src.gkp import (
 	gkp_logical,
 	gkp_from_nbar,
 )
-from src.quantum.quantum_information import gram_schmidt_orthonormal_pair
+from src.quantum.quantum_information import (
+    gram_schmidt_orthonormal_pair,
+    lowdin_orthonormal_pair,
+)
+from src.quantum.visualizations.orthonormalization_comparison import (
+    compare_orthonormalization_methods_for_states,
+)
 from src.visualizations import plot_light_states, plot_fock_distribution
 
 
@@ -49,6 +55,7 @@ def _logical_pair_and_overlap_abs_from_nbar(
 def gkp_orthonormal_pair_from_nbar(
     nbar: float = 2.0,
     N: int = 200,
+    method: Literal["gram_schmidt", "lowdin"] = "lowdin",
     verbose: bool = True,
     plot: bool = True,
 ) -> tuple[qt.Qobj, qt.Qobj, dict]:
@@ -62,12 +69,19 @@ def gkp_orthonormal_pair_from_nbar(
         normalize=True,
     )
 
-    ϕ0, ϕ1 = gram_schmidt_orthonormal_pair(ψ0, ψ1)
+    if method == "gram_schmidt":
+        ϕ0, ϕ1 = gram_schmidt_orthonormal_pair(ψ0, ψ1)
+    elif method == "lowdin":
+        ϕ0, ϕ1 = lowdin_orthonormal_pair(ψ0, ψ1)
+    else:
+        raise ValueError("method must be 'gram_schmidt' or 'lowdin'")
+
     ortho_overlap_abs = float(np.abs(ϕ0.overlap(ϕ1)))
 
     diagnostics = {
         "nbar": float(nbar),
         "N": int(N),
+        "method": method,
         "physical_overlap_abs": float(physical_overlap_abs),
         "orthonormal_overlap_abs": float(ortho_overlap_abs),
         "n0_physical": float(np.real(qt.expect(qt.num(N), ψ0))),
@@ -77,6 +91,7 @@ def gkp_orthonormal_pair_from_nbar(
     }
 
     if verbose:
+        print(f"Method = {method}")
         print(f"Physical |<0|1>| = {diagnostics['physical_overlap_abs']:.6g}")
         print(f"Orthonormalized |<0|1>| = {diagnostics['orthonormal_overlap_abs']:.6g}")
         print(
@@ -92,7 +107,7 @@ def gkp_orthonormal_pair_from_nbar(
         axes = viz["axes"]
 
         fig.suptitle(
-            f"GKP Physical vs Orthonormalized Basis (nbar={nbar:.2f}, N={N})"
+            f"GKP Physical vs Orthonormalized Basis ({method}, nbar={nbar:.2f}, N={N})"
         )
 
         subplot_titles = [
@@ -108,6 +123,38 @@ def gkp_orthonormal_pair_from_nbar(
         plt.show()
 
     return ϕ0, ϕ1, diagnostics
+
+
+def gkp_compare_orthonormalization_methods(
+    nbar: float = 2.0,
+    N: int = 200,
+    verbose: bool = True,
+    plot: bool = True,
+) -> dict[str, object]:
+    """Compare GS and Lowdin for GKP pair by calling generic state comparison."""
+    ψ0, ψ1, _ = _logical_pair_and_overlap_abs_from_nbar(
+        nbar=nbar,
+        N=N,
+        normalize=True,
+    )
+
+    results = compare_orthonormalization_methods_for_states(
+        ψ0,
+        ψ1,
+        state_labels=("|0>", "|1>"),
+        figure_title=(
+            f"GKP basis comparison (nbar={nbar:.2f}, N={N})\n"
+            f"physical |<0|1>|={{physical_overlap_abs:.3e}}"
+        ),
+        verbose=verbose,
+        plot=plot,
+    )
+
+    return {
+        "nbar": float(nbar),
+        "N": int(N),
+        **results,
+    }
 
 
 def _logical_mean_photon_numbers(ψ0: qt.Qobj, ψ1: qt.Qobj, N: int) -> tuple[float, float]:
@@ -257,4 +304,4 @@ def gkp_overlap_vs_nbar(
 if __name__ == "__main__":
     # gkp_overlap()
     # gkp_overlap_vs_nbar()   
-    gkp_orthonormal_pair_from_nbar()
+    gkp_compare_orthonormalization_methods()
