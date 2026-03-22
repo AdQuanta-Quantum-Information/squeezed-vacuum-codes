@@ -826,7 +826,7 @@ def _plot_results(
 def plot_full_codewords_numeric_figure_x_is_gamma(
     num_moments : int = 50,
     num_code_states:int = 3,
-    with_gkp:bool = True,
+    with_gkp:bool = False,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00"
     noise_method : NoiseOptionLiteral = "kraus-KL-style",  # "simulated", "kraus-KL-style", "kraus-channel"
     mean_photon_number : float = 2.0,

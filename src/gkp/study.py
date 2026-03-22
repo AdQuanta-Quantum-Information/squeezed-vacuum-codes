@@ -198,6 +198,38 @@ def gkp_overlap(
     return overlap_abs
 
 
+def gkp_plot_plus_states(
+    nbar_targets: Iterable[float] = (1.0, 2.0, 3.0, 4.0),
+    N: int = 100,
+) -> None:
+    """Plot the |+> GKP state for several target nbar values, keeping track of the actual physical nbar."""
+    states = []
+    titles = []
+    
+    n_op = qt.num(N)
+    
+    for nbar in nbar_targets:
+        ψ0, _ = gkp_from_nbar(logical_value=0, N=N, nbar_target=nbar, _prog_bar=False)
+        ψ1, _ = gkp_from_nbar(logical_value=1, N=N, nbar_target=nbar, _prog_bar=False)
+        ψ_plus = (ψ0 + ψ1).unit()
+        
+        n_actual = float(np.real(qt.expect(n_op, ψ_plus)))
+        states.append(ψ_plus)
+        titles.append(f"nbar target: {nbar:.2f}\nnbar actual: {n_actual:.2f}")
+
+    viz = plot_light_states(states, _draw_now=False)
+    fig = viz["fig"]
+    axes = viz["axes"]
+    
+    fig.suptitle(f"GKP |+> States (N={N})", y=1.05)    
+    for ax, title in zip(axes, titles):
+        ax.set_title(title, fontsize=10)
+        
+    fig.tight_layout()
+    plt.show()
+
+
+
 def gkp_overlap_vs_nbar(
     nbar_values:Iterable[float] = tuple(np.linspace(0.5, 10.0, 15)),
     N:int|None = 200,
@@ -304,4 +336,5 @@ def gkp_overlap_vs_nbar(
 if __name__ == "__main__":
     # gkp_overlap()
     # gkp_overlap_vs_nbar()   
-    gkp_compare_orthonormalization_methods()
+    # gkp_compare_orthonormalization_methods()
+    gkp_plot_plus_states()
