@@ -18,7 +18,7 @@ if __name__ == "__main__":
     from __init__ import add_root_to_path
     path = add_root_to_path()
 
-from src.utils.visuals.matplotlib_support import save_figure, draw_now
+from src.utils.visuals.matplotlib_support import save_figure, draw_now, add_magnification_glass_inset, InsetAxesBounds
 from src.utils.visuals.colors import color_shades, _RgbFloatTuple
 from src.utils.prints import ProgressBar
 from src.utils.strings import format_float_for_as_str
@@ -301,6 +301,37 @@ def _get_text_pos(
 
 
 # _adjust_label_positions_to_avoid_overlap  →  imported from _visual_helper
+
+
+def _add_magnification_glass(
+    ax: Axes,
+    noise_type: BosonicNoiseType,
+    x_scale: Literal["linear", "log"] = "log",
+    y_scale: Literal["linear", "log"] = "log",
+) -> Axes | None:
+    """Apply numerics1 defaults for the magnification-glass style inset."""
+    if noise_type == "loss":
+        inset_axes_bounds = InsetAxesBounds(x0=0.54, y0=0.04, width=0.42, height=0.36)
+    else:
+        inset_axes_bounds = InsetAxesBounds(x0=0.52, y0=0.04, width=0.44, height=0.36)
+
+    return add_magnification_glass_inset(
+        ax=ax,
+        x_scale=x_scale,
+        y_scale=y_scale,
+        x_window=None,
+        y_window=None,
+        x_window_rel_start=0.86,
+        y_padding_ratio=0.18,
+        inset_axes_bounds=inset_axes_bounds,
+        border_color="red",
+        border_linewidth=1.8,
+        connector_linewidth=1.3,
+        connector_loc1=2,
+        connector_loc2=4,
+        hide_inset_ticks=True,
+        inset_tick_fontsize=8,
+    )
 
 
 def _add_unified_legend_for_both_axes(
@@ -590,6 +621,7 @@ def _plot_results(
     _adjust_ticks_font:bool = True,
     x_scale: Literal['linear', 'log'] = 'log',
     figure_title: str = "",
+    enable_magnification_glass: bool = False,
 ):
     """ Plot the results from compute_cost_on_logical_codewords(). """
 
@@ -751,6 +783,10 @@ def _plot_results(
     else:
         raise ValueError(f"Unknown label_style: {label_style!r}")
 
+    if enable_magnification_glass:
+        _add_magnification_glass(axes["loss"], noise_type="loss", x_scale=x_scale, y_scale="log")
+        _add_magnification_glass(axes["dephasing"], noise_type="dephasing", x_scale=x_scale, y_scale="log")
+
     if figure_title != "":
         fig.suptitle(figure_title, fontsize=text_font_size)
 
@@ -788,20 +824,21 @@ def _plot_results(
 
 
 def plot_full_codewords_numeric_figure_x_is_gamma(
-    num_moments : int = 400,
-    num_gammas:int = 5,
+    num_moments : int = 100,
     num_code_states:int = 3,
     with_gkp:bool = True,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00"
     noise_method : NoiseOptionLiteral = "kraus-KL-style",  # "simulated", "kraus-KL-style", "kraus-channel"
-    mean_photon_number : float = 2.0
+    mean_photon_number : float = 2.0,
+    enable_magnification_glass: bool = False,
 ) -> None:
 
     ## ========= Inputs =========:
     x_vec_name = "γ"
-    γ_vec = np.logspace(-7, -3, num_gammas).tolist()
+    γ_vec = np.logspace(-7, -3, 5).tolist()
     γ_vec += np.logspace(-3, -1, 3).tolist()[1:]
-    γ_vec += np.logspace(-1, +1, 5).tolist()[1:]
+    γ_vec += np.logspace(-1, +0, 6).tolist()[1:-1]
+
     if with_gkp:
         codes = ["squeeze", "cat", "binomial", "gkp"]
     else:
@@ -841,7 +878,8 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
         figure_name_extra=f"n-bar={mean_photon_number}",
         N=num_moments,
         loss_basis="main",
-        dephasing_basis="dual"
+        dephasing_basis="dual",
+        enable_magnification_glass=enable_magnification_glass,
     )
 
     ## Wait for user to close:
@@ -865,7 +903,8 @@ def plot_full_codewords_numeric_figure_x_is_nbar(
     noise_method : NoiseOptionLiteral = "kraus-KL-style",  # "simulated", "kraus" "kraus-channel"
     loss_basis: LogicalBasisName = "main",
     dephasing_basis: LogicalBasisName = "dual",
-    γ = 1e-2
+    γ = 1e-2,
+    enable_magnification_glass: bool = False,
 ) -> None:
     
     ## ========= Inputs =========:
@@ -916,6 +955,7 @@ def plot_full_codewords_numeric_figure_x_is_nbar(
         figure_name_extra=f"γ={gamma_file_str}",
         N=num_moments,
         x_scale = 'linear',
+        enable_magnification_glass=enable_magnification_glass,
         # figure_title=f"Noise rate {γ_str} = {gamma_title_str}"
     )
 
