@@ -216,7 +216,7 @@ def _check_kraus_series_completeness(ops:Iterable[Qobj]):
     # diff_norm = np.linalg.norm(sum_ - I, ord='fro')
     diff_max = np.abs(sum_ - I).max()
     if diff_max > KRAUS_COMPLETENESS_CHECK_THRESHOLD:
-        raise AssertionError(f"Kraus operators are not complete: Σ Kj†Kj - I = {diff!r}")
+        raise AssertionError(f"Kraus operators are not complete: Σ Kj†Kj - I = {diff_max!r}")
 
 
 
