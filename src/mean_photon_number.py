@@ -897,11 +897,11 @@ def _test7_test_binomial_code(
 
 
 
-lower_threshold_per_code: dict[_CodeTypes, float] = {
-    'cat': 0.5,
-    'squeeze': 1.0,
-    'binomial': 0.0,
-    'gkp': 0.0,
+lower_threshold_per_code: dict[_CodeTypes, Callable[[int], float]] = {
+    'cat': lambda m: float(m) / 4.0,
+    'squeeze': lambda m: float(m) / 2.0,
+    'binomial': lambda m: float(m),
+    'gkp': lambda m: 0.0,
 }
 
 
@@ -946,7 +946,7 @@ def _get_logical_qutip_state(
 
 
 def _test8_parameter_solver_error_vs_qutip_mean(
-    m: int = 2,
+    m: int = 6,
     logical_value: int | Literal['+'] = '+',
     target_mean_photon_numbers: list[float] = np.linspace(0.1, 5.1, 21).tolist(),
     num_moments: int = 100,
@@ -969,12 +969,9 @@ def _test8_parameter_solver_error_vs_qutip_mean(
         for code_type in ProgressBar(code_types, prefix="per code:"):
             m_for_code = 1 if code_type == 'gkp' else m
 
-            # Binomial states are generated from an integer K with K >= 2 in "nbar" mode,
-            # so for qubit sectors the minimal reachable mean photon number is approximately m.
-            min_target_for_code = lower_threshold_per_code[code_type]
-            if code_type == 'binomial':
-                min_target_for_code = float(m_for_code)
-
+            ## Check if target mean photon number is above the minimum threshold for this code; 
+            # if not, skip
+            min_target_for_code = lower_threshold_per_code[code_type](m_for_code)
             if target_mean_photon_number < min_target_for_code:
                 continue
 
