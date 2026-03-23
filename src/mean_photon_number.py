@@ -436,9 +436,9 @@ def _parameter_for_target_photon_number(
 ) -> float:
     match code_type:
         case 'cat':
-            raise ValueError("exact functuin for cat code mean photon number is not implemented yet. Use get_mean_photon_number directly with analytic_substitution=True.")
+            raise ValueError("exact function for cat code mean photon number is not implemented yet. Use get_mean_photon_number directly with analytic_substitution=True.")
         case 'squeeze':
-            raise ValueError("exact functuin for squeezed code mean photon number is not implemented yet. Use get_mean_photon_number directly with analytic_substitution=True.")
+            raise ValueError("exact function for squeezed code mean photon number is not implemented yet. Use get_mean_photon_number directly with analytic_substitution=True.")
         case 'binomial':
             return 2.0 * target_mean_photon_number / m
         case 'gkp':
@@ -464,6 +464,15 @@ def find_parameter_for_target_mean_photon_number(
     ## Otherwise, we need to solve the equation mean_photon_number_func(param) = target_mean_photon_number 
     # for param, where mean_photon_number_func is derived from the analytic expression for the mean photon 
     # number of the code.
+    nbar_threshold = LOWER_THRESHOLD_FOR_1_LOGICAL_STATE_PER_CODE[code_type](m)
+    if logical_value in {'+', 1} and target_mean_photon_number < nbar_threshold:
+        if logical_value == 1:
+            raise ValueError(f"Target mean photon number {target_mean_photon_number} is below the minimum threshold {nbar_threshold} for logical value 1 in code type {code_type} with m={m}.")
+        
+        elif logical_value == '+':
+            #TODO this is just a band-aid:
+            logical_value = 0
+
     mean_photon_number_func = get_single_input_function_from_symbolic_expression(
         code_type=code_type,
         m=m,
@@ -503,7 +512,8 @@ def get_mean_photon_number(
     analytic_substitution:bool=True,
     cut_off:int = DEFAULT_L_CUT_OFF 
 ) -> float:
-    # Handle superposition state |+> = 1/sqrt(2)(|0> + |1>)
+    
+    ## Handle superposition state |+> = 1/sqrt(2)(|0> + |1>)
     if logical_value == '+':
         mean_photon_0 = get_mean_photon_number(
             code_type=code_type,
@@ -897,12 +907,13 @@ def _test7_test_binomial_code(
 
 
 
-lower_threshold_per_code: dict[_CodeTypes, Callable[[int], float]] = {
+LOWER_THRESHOLD_FOR_1_LOGICAL_STATE_PER_CODE: dict[_CodeTypes, Callable[[int], float]] = {
     'cat': lambda m: float(m) / 4.0,
     'squeeze': lambda m: float(m) / 2.0,
     'binomial': lambda m: float(m),
     'gkp': lambda m: 0.0,
 }
+
 
 
 
@@ -950,7 +961,7 @@ def _test8_parameter_solver_error_vs_qutip_mean(
     logical_value: int | Literal['+'] = '+',
     target_mean_photon_numbers: list[float] = np.linspace(0.1, 5.1, 21).tolist(),
     num_moments: int = 100,
-    code_types: list[_CodeTypes] = ['gkp'] #['cat', 'squeeze', 'binomial', 'gkp']
+    code_types: list[_CodeTypes] = ['cat', 'squeeze', 'binomial', 'gkp']
 ) -> None:
     """For each code family, solve parameter-from-target and compare to Qutip mean photons.
 
@@ -971,9 +982,9 @@ def _test8_parameter_solver_error_vs_qutip_mean(
 
             ## Check if target mean photon number is above the minimum threshold for this code; 
             # if not, skip
-            min_target_for_code = lower_threshold_per_code[code_type](m_for_code)
-            if target_mean_photon_number < min_target_for_code:
-                continue
+            # min_target_for_code = LOWER_THRESHOLD_FOR_1_LOGICAL_STATE_PER_CODE[code_type](m_for_code)
+            # if target_mean_photon_number < min_target_for_code:
+            #     continue
 
             parameter = find_parameter_for_target_mean_photon_number(
                 code_type=code_type,
@@ -1023,10 +1034,15 @@ def _test8_parameter_solver_error_vs_qutip_mean(
             markevery=2,
         )
 
+    title_str = f"Parameter Solver Error vs Qutip Mean Photon Number"+\
+        f"\nfor state |{logical_value}⟩ and m={m}"
+    if "gkp" in code_types:
+        title_str += " (except GKP)"
+
     plt.axhline(0.0, color='black', linestyle=':', linewidth=1.2, alpha=0.8)
     plt.xlabel("Target Mean Photon Number")
     plt.ylabel("Qutip Mean - Target Mean")
-    plt.title(f"Parameter Solver Error vs Qutip Mean Photon Number\nfor state |{logical_value}⟩")
+    plt.title(title_str)
     plt.legend()
     plt.grid(True, alpha=0.35)
     plt.show()

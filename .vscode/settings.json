@@ -16,6 +16,7 @@
             "approve": true,
             "matchCommandLine": true
         },
-        "c:/Users/NGBig/git_repos/squeezed-vacuum-codes/.venv/Scripts/python.exe": true
+        "c:/Users/NGBig/git_repos/squeezed-vacuum-codes/.venv/Scripts/python.exe": true,
+        "ForEach-Object": true
     }
 }

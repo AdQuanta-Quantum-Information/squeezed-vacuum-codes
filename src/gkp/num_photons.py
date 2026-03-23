@@ -11,12 +11,15 @@ except ModuleNotFoundError:
     from _bootstrap import add_root_to_path
 add_root_to_path()
 
+
 from src.utils.prints import ProgressBar
 from src.codes_built_in_superposition import gkp_code_state
 from src.mean_photon_number import qutip_mean_photon_number
+from src.gkp.fock_cutoff_recommendation import recommended_N_from_nbar
 
 
-def gkp_parameter_solver_error_vs_qutip_mean(
+
+def _gkp_parameter_solver_error_vs_qutip_mean(
     target_mean_photon_numbers: Iterable[float] = np.linspace(0.1, 5.1, 21),
     N_values: Iterable[int] = (50, 100, 150),
     logical_value: int | Literal['+'] = '+',
@@ -82,4 +85,4 @@ def gkp_parameter_solver_error_vs_qutip_mean(
     print("Done.")
 
 if __name__ == "__main__":
-    gkp_parameter_solver_error_vs_qutip_mean()
+    _gkp_parameter_solver_error_vs_qutip_mean()

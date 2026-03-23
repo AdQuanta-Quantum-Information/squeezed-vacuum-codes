@@ -68,15 +68,6 @@ def gkp_params_from_nbar(
     return Delta, kappa, r, s_max
 
 
-def recommended_N_from_nbar(nbar: float, safety: float = 8.0):
-    """
-    Heuristic Fock cutoff N based on nbar:
-      choose N ~ nbar + safety*sqrt(nbar) + const
-    """
-    if nbar <= 0:
-        raise ValueError("nbar must be > 0.")
-    return int(np.ceil(nbar + safety * np.sqrt(nbar) + 10))
-
 
 def gkp_logical(
     logical_val, N, Delta=0.2, kappa=0.2, s_max=None, ampl_cutoff=1e-12, _prog_bar=True

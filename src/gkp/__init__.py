@@ -3,10 +3,11 @@ from ._bootstrap import add_root_to_path
 
 from ._gkp import (
     gkp_params_from_nbar,
-    recommended_N_from_nbar,
     gkp_logical,
     gkp_from_nbar,
 )
+
+from .fock_cutoff_recommendation import recommended_N_from_nbar
 
 __all__ = [
     "add_root_to_path",
@@ -14,4 +15,5 @@ __all__ = [
     "recommended_N_from_nbar",
     "gkp_logical",
     "gkp_from_nbar",
+    "recommended_N_from_nbar",
 ]
