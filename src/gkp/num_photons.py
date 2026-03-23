@@ -2,7 +2,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 import qutip as qt
 
-from typing import Iterable, Literal, TypedDict, NamedTuple
+from typing import Iterable, Literal, NamedTuple
 
 # Use project-standard path setup
 try:
@@ -14,30 +14,16 @@ add_root_to_path()
 
 from src.utils.prints import ProgressBar
 from src.utils.caches import cache
-from src.utils.searches import binary_search_callable_increasing
+from src.utils.inverse_lookup import MonotonicDirection, MonotonicInverseLookup
 from src.gkp.fock_cutoff_recommendation import recommended_N_from_nbar
 from src.gkp.logical import gkp_logical
 
 
-# Shared grid resolution for nbar lookup/interpolation.
-DELTA_NBAR_GRID: float = 0.2
+# Shared Delta-grid resolution for inverse lookup interpolation.
+DELTA_X_GRID: float = 0.02
 
 # Smallest positive nbar we solve against to avoid singular behavior at exactly 0.
 MIN_POSITIVE_NBAR: float = 1e-16
-
-# Safety cap on bracket expansion iterations when solving anchors.
-BRACKET_EXPAND_MAX_ITERS: int = 8
-
-
-class AnchorSolution(TypedDict):
-    anchor_nbar: float
-    Delta: float
-    kappa: float
-    r: float
-    s_max: int
-    nbar_actual: float
-    p_star: float
-    N: int
 
 
 class GKPParams(NamedTuple):
@@ -213,136 +199,40 @@ def _nbar_only(
     return nbar_actual
 
 
-def _solve_anchor_for_nbar(
-    anchor_nbar: float,
-    *,
-    ratio_kappa_over_Delta: float,
-    ampl_cutoff: float,
-    logical_value: int,
-) -> AnchorSolution:
-    if anchor_nbar < 0:
-        raise ValueError("anchor_nbar must be >= 0.")
-
-    # Use a tiny positive value to avoid singular behavior when anchoring vacuum.
-    target_nbar = max(anchor_nbar, MIN_POSITIVE_NBAR)
-
-    rho = float(ratio_kappa_over_Delta)
-
-    # Initial guess from analytic estimate; search over Delta directly
-    # because nbar is monotonic increasing with Delta in practice.
-    Delta_est, _, _, _ = estimate_gkp_params_from_nbar(
-        target_nbar, ratio_kappa_over_Delta=rho, ampl_cutoff=ampl_cutoff
-    )
-
-    N = recommended_N_from_nbar(target_nbar)
-
-    cache_nbar: dict[float, float] = {}
-
-    def nbar_for_Delta(Delta: float) -> float:
-        if Delta <= 0:
-            raise ArithmeticError("Delta must stay positive")
-        if Delta in cache_nbar:
-            return cache_nbar[Delta]
-        kappa = rho * Delta
-        nbar_val = _nbar_only(
-            Delta=Delta,
-            kappa=kappa,
-            N=N,
-            logical_value=logical_value,
-            ampl_cutoff=ampl_cutoff,
-        )
-        cache_nbar[Delta] = nbar_val
-        return nbar_val
-
-    # Find bracket where nbar_for_Delta(lo) <= target <= nbar_for_Delta(hi)
-    lo = max(1e-12, Delta_est * 0.5)
-    hi = max(lo * 2.0, Delta_est * 2.0)
-
-    y_lo = nbar_for_Delta(lo)
-    y_hi = nbar_for_Delta(hi)
-
-    # Near-vacuum fast path: if we are at or below ~1e-15, clamp low side immediately.
-    if target_nbar <= MIN_POSITIVE_NBAR * 10:
-        lo = MIN_POSITIVE_NBAR
-        y_lo = nbar_for_Delta(lo)
-        # Refresh hi if lo moved.
-        if hi <= lo:
-            hi = lo * 2.0
-            y_hi = nbar_for_Delta(hi)
-    else:
-        # Clamp threshold to avoid overly aggressive downward expansion when target is tiny.
-        fast_thresh = max(target_nbar * 1.05, target_nbar + MIN_POSITIVE_NBAR)
-        if y_lo > fast_thresh:
-            for _ in ProgressBar.range(BRACKET_EXPAND_MAX_ITERS, prefix="lo expand: "):
-                if y_lo <= target_nbar:
-                    break
-                lo *= 0.5
-                y_lo = nbar_for_Delta(lo)
-                if lo < MIN_POSITIVE_NBAR:
-                    lo = MIN_POSITIVE_NBAR
-                    y_lo = nbar_for_Delta(lo)
-                    break
-
-    # Only expand upward if needed.
-    if y_hi < target_nbar:
-        for _ in ProgressBar.range(BRACKET_EXPAND_MAX_ITERS, prefix="hi expand: "):
-            if y_hi >= target_nbar:
-                break
-            hi *= 2.0
-            y_hi = nbar_for_Delta(hi)
-        else:
-            raise RuntimeError("Failed to bracket target nbar after many expansions")
-
-    # Ensure binary search bracket condition by clamping to reachable floor if needed.
-    target_for_search = max(target_nbar, y_lo)
-
-    Delta_star, _ = binary_search_callable_increasing(
-        nbar_for_Delta,
-        target=target_for_search,
-        x_bounds=(lo, hi),
-        progress_bar=False,
-        x_tol=1e-5,
-        y_tol=1e-4,
-        max_iters=200,
-    )
-
-    kappa_star = rho * Delta_star
-    p_star = 1.0 / Delta_star
-    _, nbar_star = _build_state_and_nbar(
-        Delta=Delta_star,
-        kappa=kappa_star,
-        N=N,
-        logical_value=logical_value,
-        ampl_cutoff=ampl_cutoff,
-    )
-    r_star = np.log(1.0 / (np.sqrt(2.0) * Delta_star))
-    s_max_star = _s_max_from_params(kappa_star, ampl_cutoff)
-
-    return AnchorSolution(
-        anchor_nbar=float(anchor_nbar),
-        Delta=float(Delta_star),
-        kappa=float(kappa_star),
-        r=float(r_star),
-        s_max=int(s_max_star),
-        nbar_actual=float(nbar_star),
-        p_star=float(p_star),
-        N=int(N),
-    )
-
-
 @cache(ram=True, disk=True)
-def _cached_anchor(
-    anchor_nbar: float,
+def _cached_inverse_lookup(
     *,
     ratio_kappa_over_Delta: float,
     ampl_cutoff: float,
     logical_value: int,
-) -> AnchorSolution:
-    return _solve_anchor_for_nbar(
-        anchor_nbar,
-        ratio_kappa_over_Delta=ratio_kappa_over_Delta,
+    N: int,
+) -> MonotonicInverseLookup:
+    rho = float(ratio_kappa_over_Delta)
+    Delta0, _, _, _ = estimate_gkp_params_from_nbar(
+        max(MIN_POSITIVE_NBAR, 0.2),
+        ratio_kappa_over_Delta=rho,
         ampl_cutoff=ampl_cutoff,
-        logical_value=logical_value,
+    )
+
+    class _GKPInverseLookup(MonotonicInverseLookup[float, float]):
+        @classmethod
+        def func(cls, x: float) -> float:
+            Delta = x
+            if Delta <= 0:
+                raise ArithmeticError("Delta must stay positive")
+            return _nbar_only(
+                Delta=Delta,
+                kappa=rho * Delta,
+                N=N,
+                logical_value=logical_value,
+                ampl_cutoff=ampl_cutoff,
+            )
+
+    return _GKPInverseLookup(
+        delta_x=DELTA_X_GRID,
+        x0=max(float(Delta0), DELTA_X_GRID),
+        direction=MonotonicDirection.INCREASING,
+        initial_points=2,
     )
 
 
@@ -354,41 +244,28 @@ def lookup_gkp_params_from_nbar(
     logical_value: int = 0,
 ) -> GKPParams:
     """
-    Lazy lookup (with interpolation) from target nbar to (Delta, kappa, r, s_max).
+    Inverse lookup from target nbar to (Delta, kappa, r, s_max).
 
-    - Stores anchor points on a regular grid of spacing DELTA_NBAR_GRID using disk cache.
-    - Interpolates linearly between neighboring anchors when available.
-    - Computes a new anchor only when a needed grid point is missing.
+    Builds (and disk-caches) a uniform Delta->nbar table, then inverts it by
+    linear interpolation in nbar-space.
     """
     if nbar_target < 0:
         raise ValueError("nbar_target must be >= 0.")
-    if DELTA_NBAR_GRID <= 0:
-        raise ValueError("DELTA_NBAR_GRID must be > 0.")
-    
-    def _get_sol(anchor: float) -> AnchorSolution:
-        return _cached_anchor(
-            anchor,
-            ratio_kappa_over_Delta=ratio_kappa_over_Delta,
-            ampl_cutoff=ampl_cutoff,
-            logical_value=logical_value,
-        )
+    if DELTA_X_GRID <= 0:
+        raise ValueError("DELTA_X_GRID must be > 0.")
 
-    # Snap to grid anchors
-    lower_anchor = max(0.0, DELTA_NBAR_GRID * np.floor(nbar_target / DELTA_NBAR_GRID))
-    upper_anchor = lower_anchor + DELTA_NBAR_GRID
+    target_nbar = max(nbar_target, MIN_POSITIVE_NBAR)
+    N = recommended_N_from_nbar(target_nbar)
 
-    if upper_anchor < lower_anchor:
-        raise RuntimeError("Upper anchor is less than lower anchor, which should never happen.")
-    
-    if lower_anchor == 0.0:
-        lower_anchor = MIN_POSITIVE_NBAR
+    lookup = _cached_inverse_lookup(
+        ratio_kappa_over_Delta=ratio_kappa_over_Delta,
+        ampl_cutoff=ampl_cutoff,
+        logical_value=logical_value,
+        N=N,
+    )
 
-    lower_sol = _get_sol(lower_anchor)
-    upper_sol = _get_sol(upper_anchor)
-
-    t = (nbar_target - lower_anchor) / (upper_anchor - lower_anchor)
-    Delta = (1.0 - t) * lower_sol["Delta"] + t * upper_sol["Delta"]
-    kappa = (1.0 - t) * lower_sol["kappa"] + t * upper_sol["kappa"]
+    Delta = lookup.x_from_y(target_nbar, clamp=True)
+    kappa = float(ratio_kappa_over_Delta) * Delta
     r = np.log(1.0 / (np.sqrt(2.0) * Delta))
     s_max = _s_max_from_params(kappa, ampl_cutoff)
 

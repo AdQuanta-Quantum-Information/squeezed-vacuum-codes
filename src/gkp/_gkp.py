@@ -24,8 +24,7 @@ def gkp_params_from_nbar(
     """
     Lookup (lazily cached) mapping from target nbar to (Delta, kappa, r, s_max).
 
-    Uses an adaptive grid plus disk-backed cache to reuse previously solved
-    anchor points. Falls back to interpolation between neighboring anchors.
+    Uses a cached uniform Delta->nbar table and inverts it by interpolation.
     """
     return lookup_gkp_params_from_nbar(
         nbar,

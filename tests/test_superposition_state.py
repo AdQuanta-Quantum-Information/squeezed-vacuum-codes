@@ -5,13 +5,15 @@ Test to verify:
    where |+> = 1/sqrt(2)(|0> + |1>)
 """
 
-import sys
-import os
 import numpy as np
 from typing import Literal, Union
 
-# Add root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Use project-standard path setup
+try:
+    from tests._bootstrap import add_root_to_path
+except ModuleNotFoundError:
+    from _bootstrap import add_root_to_path
+add_root_to_path()
 
 from src.mean_photon_number import (
     get_mean_photon_number,
