@@ -2,8 +2,6 @@ from typing import overload, Literal
 import qutip as qt
 
 import numpy as np
-from numpy import pi as π
-sqrt_pi = np.sqrt(np.pi)
 
 
 
@@ -13,100 +11,32 @@ if __name__ == "__main__":
 
 from src.visualizations import plot_light_states, plot_fock_distribution
 from src.utils.prints import ProgressBar
-
+from src.gkp.num_photons import lookup_gkp_params_from_nbar, estimate_gkp_params_from_nbar
+from src.gkp.logical import gkp_logical
 
 
 def gkp_params_from_nbar(
     nbar: float,
     ratio_kappa_over_Delta: float = 1.0,
     ampl_cutoff: float = 1e-12,
+    logical_value: int = 0,
 ):
     """
-    Map a single target mean photon number nbar to (Delta, kappa) using:
-        nbar ≈ 1/(4 Delta^2) + 1/(4 kappa^2)
-    plus a chosen ratio: kappa = ratio * Delta.
+    Lookup (lazily cached) mapping from target nbar to (Delta, kappa, r, s_max).
 
-    Default ratio=1 => symmetric approximate GKP (Delta=kappa).
-
-    Returns:
-      Delta, kappa, r, s_max
-    where r is the squeezing parameter for a q-squeezed vacuum with Var(q)=Delta^2,
-    and s_max is a reasonable truncation of the peak index sum based on the envelope.
+    Uses an adaptive grid plus disk-backed cache to reuse previously solved
+    anchor points. Falls back to interpolation between neighboring anchors.
     """
-    if nbar <= 0:
-        raise ValueError("nbar must be > 0.")
-    if ratio_kappa_over_Delta <= 0:
-        raise ValueError("ratio_kappa_over_Delta must be > 0.")
-    if not (0 < ampl_cutoff < 1):
-        raise ValueError("ampl_cutoff must be between 0 and 1.")
-
-    rho = float(ratio_kappa_over_Delta)
-
-    # 1. Account for vacuum fluctuations (optional, improves low-n accuracy)
-    # Energy from quadratures = nbar + 0.5
-    target_energy = nbar + 0.5 
-    
-    # 2. Correct Formula: E = 1/(4*kappa^2) + 1/(8*Delta^2)
-    # Substitute kappa = rho * Delta  =>  E = 1/(4*rho^2*Delta^2) + 1/(8*Delta^2)
-    # E = (1/Delta^2) * ( 1/(4*rho^2) + 1/8 )
-    
-    term = (1.0 / (4.0 * rho * rho)) + (1.0 / 8.0)
-    Delta = np.sqrt(term / target_energy)
-
-    kappa = rho * Delta
-
-    # For q-squeezed vacuum: Var(q) = Delta^2 = (1/2) e^{-2r}
-    r = np.log(1.0 / (np.sqrt(2.0) * Delta))
-
-    # Choose s_max so outermost envelope weight exp[-(kappa*q_s)^2/2] < ampl_cutoff
-    # Use mu=0 worst case for envelope extent (slightly more conservative).
-    # q_s = (2s+mu)*sqrt(pi)
-    mmax = np.sqrt(2.0 * np.log(1.0 / ampl_cutoff)) / (kappa * np.sqrt(np.pi))
-    s_max = int(np.ceil(mmax / 2.0))
-    s_max = max(s_max, 1)
-
-    return Delta, kappa, r, s_max
+    return lookup_gkp_params_from_nbar(
+        nbar,
+        ratio_kappa_over_Delta=ratio_kappa_over_Delta,
+        ampl_cutoff=ampl_cutoff,
+        logical_value=logical_value,
+    )
 
 
-
-def gkp_logical(
-    logical_val, N, Delta=0.2, kappa=0.2, s_max=None, ampl_cutoff=1e-12, _prog_bar=True
-):
-    """
-    Approximate square-lattice GKP logical |logical_val> (logical_val=0 or 1) in truncated Fock basis.
-
-    Conventions:
-      [q,p]=i, a=(q+ip)/sqrt(2).
-      Peaks at q = (2s+mu)*sqrt(pi).
-      Each peak has q-stddev Delta (Var(q)=Delta^2).
-      Envelope weights exp[-(kappa*q_s)^2/2].
-    """
-    if logical_val not in (0, 1):
-        raise ValueError("mu must be 0 or 1.")
-
-    r = np.log(1.0 / (np.sqrt(2.0) * Delta))
-    vac = qt.basis(N, 0)
-    peak_state = qt.squeeze(N, r) @ vac
-
-    if s_max is None:
-        mmax = np.sqrt(2.0 * np.log(1.0 / ampl_cutoff)) / (kappa * np.sqrt(np.pi))
-        s_max = int(np.ceil((mmax - logical_val) / 2.0))
-        s_max = max(s_max, 1)
-
-    psi = 0 * peak_state
-    if _prog_bar:
-        s_values = ProgressBar(range(-s_max, s_max + 1), prefix=f"building |{logical_val}_L⟩  ", expected_end=s_max*2+1)
-    else:
-        s_values = range(-s_max, s_max + 1)
-
-    for s in s_values:
-        q_s = (2 * s + logical_val) * sqrt_pi
-        weight = np.exp(-0.5 * (kappa * q_s) ** 2)
-        alpha = q_s / np.sqrt(2.0)  # because dq = sqrt(2) * Re(alpha)
-        psi += weight * (qt.displace(N, alpha) @ peak_state)
-
-    # return psi.unit()
-    return psi  # not, final state is not normalized
+# Backward-compatible alias for the fast analytic estimate
+gkp_params_from_nbar_estimate = estimate_gkp_params_from_nbar
 
 
 @overload
@@ -133,7 +63,10 @@ def gkp_from_nbar(
       psi  (and optionally meta dict with Delta,kappa,r,s_max,nbar_actual,overlap_ready etc.)
     """
     Delta, kappa, r, s_max = gkp_params_from_nbar(
-        nbar_target, ratio_kappa_over_Delta=ratio_kappa_over_Delta, ampl_cutoff=ampl_cutoff
+        nbar_target,
+        ratio_kappa_over_Delta=ratio_kappa_over_Delta,
+        ampl_cutoff=ampl_cutoff,
+        logical_value=logical_value,
     )
 
     psi = gkp_logical(logical_value, N, Delta=Delta, kappa=kappa, s_max=s_max, ampl_cutoff=ampl_cutoff, _prog_bar=_prog_bar)
@@ -220,6 +153,9 @@ def _gkp_test_nbar_recommendation():
 
 
     import matplotlib.pyplot as plt
+    from src.gkp.fock_cutoff_recommendation import recommended_N_from_nbar
+
+
     fig = plt.figure(figsize=(8, 6))
     plt.plot(nbar_targets, nbar_targets, linestyle='--', color='gray', label='Target nbar')
 

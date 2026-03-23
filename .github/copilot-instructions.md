@@ -16,3 +16,9 @@ Prefer expressive control-state types (`Enum` or `Literal`) over ambiguous `bool
 
 #### Split Long Functions into Smaller Ones
 When independent parts of a logic block can be extracted, split them into small, named sub-functions instead of keeping one long function.
+
+#### Type-hinting:
+Use type hints for all functions, including return types. This improves readability and linting and helps catch bugs.
+
+- Avoid using `Any` as a type hint. Instead, use more specific types or create custom types if necessary.
+- If many outputs are needed from a function, consider using a `TypedDict` or a `dataclass` to return a structured object instead of a general tuple\dict.
