@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Generic, SupportsFloat, TypeVar, cast, Callable, Final
+from typing import Generic, Iterable, SupportsFloat, TypeVar, cast, Callable, Final
+
+from src.utils.prints import ProgressBar
 
 import numpy as np
 
@@ -11,9 +13,6 @@ YType = TypeVar("YType", bound=SupportsFloat)
 YType2 = TypeVar("YType2", bound=SupportsFloat)
 
 
-DEFAULT_X0 : Final[float] = 0.0
-DEFAULT_DELTA_X : Final[float] = 1.0
-DEFAULT_NUM_INITIAL_POINTS : Final[int] = 2
 MONOTONICITY_TOL : Final[float] = 1e-12
 
 
@@ -36,10 +35,9 @@ class MonotonicInverseLookup(ABC, Generic[XType, YType]):
         cls: type["MonotonicInverseLookup[XType2, YType2]"],
         f: Callable[[XType2], YType2],
         *,
-        delta_x: float = DEFAULT_DELTA_X,
-        x0: float = DEFAULT_X0,
+        x_points: Iterable[SupportsFloat],
         direction: MonotonicDirection = MonotonicDirection.INCREASING,
-        num_initial_points: int = DEFAULT_NUM_INITIAL_POINTS,
+        progress_bar: bool = False,
     ) -> "MonotonicInverseLookup[XType2, YType2]":
         """Factory method to create a MonotonicInverseLookup subclass from a simple function."""
 
@@ -51,10 +49,9 @@ class MonotonicInverseLookup(ABC, Generic[XType, YType]):
         lookup = cast(
             MonotonicInverseLookup[XType2, YType2],
             FuncBasedLookup(
-                delta_x=delta_x,
-                x0=x0,
+                x_points=x_points,
                 direction=direction,
-                num_initial_points=num_initial_points,
+                progress_bar=progress_bar,
             ),
         )
         return lookup
@@ -62,26 +59,28 @@ class MonotonicInverseLookup(ABC, Generic[XType, YType]):
 
     def __init__(
         self,
-        delta_x: float = DEFAULT_DELTA_X,
-        x0: float = DEFAULT_X0,
+        x_points: Iterable[SupportsFloat],
         direction: MonotonicDirection = MonotonicDirection.INCREASING,
-        num_initial_points: int = DEFAULT_NUM_INITIAL_POINTS,
+        progress_bar: bool = False,
     ) -> None:
-        if delta_x <= 0:
-            raise ValueError("delta_x must be > 0.")
-        if num_initial_points < 2:
-            raise ValueError("num_initial_points must be >= 2.")
+        x_values = np.asarray(list(x_points), dtype=float)
+        f = self.__class__.func
 
-        x_values = np.array(
-            [x0 + i * delta_x for i in range(num_initial_points)],
-            dtype=float,
+        if progress_bar:
+            iter_x_values = ProgressBar(x_values, prefix="initial points: ")
+        else:
+            iter_x_values = x_values
+
+        y_values = np.array(
+            [float( f(cast(XType, float(x))) ) for x in iter_x_values], 
+            dtype=float
         )
-        y_values = np.array([float(self.__class__.func(cast(XType, float(x)))) for x in x_values], dtype=float)
         x_arr, y_arr = self._validated_arrays(x_values, y_values, direction)
 
         self.x_values = x_arr
         self.y_values = y_arr
-        self.delta_x = float(delta_x)
+        x_diff = np.diff(x_arr)
+        self.delta_x = float(np.min(x_diff))
         self.direction = direction
 
     @classmethod
@@ -114,6 +113,9 @@ class MonotonicInverseLookup(ABC, Generic[XType, YType]):
         if direction == MonotonicDirection.INCREASING and np.any(y_diff < 0):
             raise ValueError("y_values must be non-decreasing for INCREASING direction.")
         if direction == MonotonicDirection.DECREASING and np.any(y_diff > 0):
+            from matplotlib import pyplot as plt
+            plt.plot(x_arr, y_arr, marker='o')
+            plt.axhline(0.0, color='black', linestyle='--', linewidth=1.0)
             raise ValueError("y_values must be non-increasing for DECREASING direction.")
 
         return x_arr, y_arr
