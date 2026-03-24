@@ -11,31 +11,38 @@ if __name__ == "__main__":
 
 from src.visualizations import plot_light_states, plot_fock_distribution
 from src.utils.prints import ProgressBar
-from src.gkp.num_photons import lookup_gkp_params_from_nbar, estimate_gkp_params_from_nbar
+from src.gkp.num_photons import lookup_gkp_params_from_nbar, estimate_gkp_params_from_nbar, GKPParams
 from src.gkp.logical import gkp_logical
 
 
-def gkp_params_from_nbar(
+def _gkp_params_from_nbar(
     nbar: float,
+    /, 
     ratio_kappa_over_Delta: float = 1.0,
-    ampl_cutoff: float = 1e-12,
+    amp_cutoff: float = 1e-12,
     logical_value: int = 0,
-):
+    *, 
+    use_estimation: bool = False,
+) -> GKPParams:
     """
     Lookup (lazily cached) mapping from target nbar to (Delta, kappa, r, s_max).
 
     Uses a cached uniform Delta->nbar table and inverts it by interpolation.
     """
-    return lookup_gkp_params_from_nbar(
-        nbar,
-        ratio_kappa_over_Delta=ratio_kappa_over_Delta,
-        ampl_cutoff=ampl_cutoff,
-        logical_value=logical_value,
-    )
+    if use_estimation:
+        return estimate_gkp_params_from_nbar(
+            nbar,
+            ratio_kappa_over_Delta=ratio_kappa_over_Delta,
+            amp_cutoff=amp_cutoff
+        )
+    else:
+        return lookup_gkp_params_from_nbar(
+            nbar,
+            ratio_kappa_over_Delta=ratio_kappa_over_Delta,
+            amp_cutoff=amp_cutoff,
+            logical_value=logical_value,
+        )
 
-
-# Backward-compatible alias for the fast analytic estimate
-gkp_params_from_nbar_estimate = estimate_gkp_params_from_nbar
 
 
 @overload
@@ -47,7 +54,7 @@ def gkp_from_nbar(
     N: int,
     nbar_target: float,
     ratio_kappa_over_Delta: float = 1.0,
-    ampl_cutoff: float = 1e-12,
+    amp_cutoff: float = 1e-12,
     return_meta: bool = True,
     _prog_bar: bool = True,
 ) -> qt.Qobj | tuple[qt.Qobj, dict]:
@@ -61,14 +68,14 @@ def gkp_from_nbar(
     Returns:
       psi  (and optionally meta dict with Delta,kappa,r,s_max,nbar_actual,overlap_ready etc.)
     """
-    Delta, kappa, r, s_max = gkp_params_from_nbar(
+    Delta, kappa, r, s_max = _gkp_params_from_nbar(
         nbar_target,
         ratio_kappa_over_Delta=ratio_kappa_over_Delta,
-        ampl_cutoff=ampl_cutoff,
-        logical_value=logical_value,
+        amp_cutoff=amp_cutoff,
+        logical_value=logical_value
     )
 
-    psi = gkp_logical(logical_value, N, Delta=Delta, kappa=kappa, s_max=s_max, ampl_cutoff=ampl_cutoff, _prog_bar=_prog_bar)
+    psi = gkp_logical(logical_value, N, Delta=Delta, kappa=kappa, s_max=s_max, ampl_cutoff=amp_cutoff, _prog_bar=_prog_bar)
 
     if not return_meta:
         return psi

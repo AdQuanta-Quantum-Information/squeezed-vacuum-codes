@@ -43,7 +43,7 @@ class GKPParams(NamedTuple):
     s_max: int
 
 
-def _mean_photon_number(state: qt.Qobj) -> float:
+def _compute_mean_photon_number(state: qt.Qobj) -> float:
     """Compute ⟨n⟩ for a single-mode state without importing mean_photon_number (avoids cycles)."""
     dim = state.dims[0][0]
     n_op = qt.num(dim)
@@ -86,7 +86,7 @@ def _gkp_parameter_solver_error_vs_qutip_mean(
                 )
 
             # Measure actual mean photon number and calculate discrepancy
-            qutip_mean_photons = _mean_photon_number(qutip_state)
+            qutip_mean_photons = _compute_mean_photon_number(qutip_state)
             signed_error = qutip_mean_photons - target_mean_photon_number
             
             points_per_N[N].append((target_mean_photon_number, signed_error))
@@ -200,7 +200,7 @@ def _build_state_and_nbar(
         _prog_bar=_prog_bar,
     )
     state.unit(inplace=True)
-    nbar_actual = _mean_photon_number(state)
+    nbar_actual = _compute_mean_photon_number(state)
     return state, float(nbar_actual)
 
 
@@ -237,11 +237,11 @@ def test_estimate_nbar_from_delta_is_inverse() -> None:
 
 
 def _plot_numeric_nbar_vs_delta(
-    delta_values: Iterable[float] = np.linspace(0.05, 0.55, 11),
+    delta_values: Iterable[float] = np.linspace(0.05, 0.80, 11),
     *,
     ratio_kappa_over_Delta: float = DEFAULT_RATIO_KAPPA_OVER_DELTA,
     amp_cutoff: float = DEFAULT_AMP_CUTOFF,
-    logical_value: int = 0,
+    logical_value: int = 1,
 ) -> None:
     """Sweep Delta, plot analytic and numeric nbar for quick sanity checks."""
     deltas = np.asarray(list(delta_values), dtype=float)
@@ -279,6 +279,8 @@ def _plot_numeric_nbar_vs_delta(
     plt.legend()
     plt.tight_layout()
     plt.show()
+
+    print("Done.")
 
 
 
@@ -383,10 +385,11 @@ def gkp_params_from_nbar(
 
 
 def _test_lookup_vs_qutip(
-    logical_value: int = 0,
+    logical_value: int = 1,
     nbar_targets: Iterable[float] = np.linspace(0.1, 5.1, 21),
     ratio_kappa_over_Delta: float = DEFAULT_RATIO_KAPPA_OVER_DELTA,
     amp_cutoff: float = DEFAULT_AMP_CUTOFF,
+    N = 200
 ) -> None:
     """Plot target nbar vs actual for lookup and analytic estimate (no execution here)."""
 
@@ -395,7 +398,7 @@ def _test_lookup_vs_qutip(
     estimate_errors: list[float] = []
 
     for nbar_target in ProgressBar(targets, prefix="lookup test: "):
-        N = recommended_N_from_nbar(nbar_target)
+        # N = recommended_N_from_nbar(nbar_target)
 
         # Lookup-based params
         Delta_l, kappa_l, _, _ = lookup_gkp_params_from_nbar(
