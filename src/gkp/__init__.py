@@ -4,6 +4,7 @@ from ._bootstrap import add_root_to_path
 from ._gkp import (
     _gkp_params_from_nbar,
     gkp_from_nbar,
+    get_cached_orthonormal_gkp_states,
 )
 from .logical import gkp_logical
 
@@ -20,4 +21,5 @@ __all__ = [
     "gkp_from_nbar",
     "recommended_N_from_nbar",
     "gkp_params_from_nbar",
+    "get_cached_orthonormal_gkp_states",
 ]

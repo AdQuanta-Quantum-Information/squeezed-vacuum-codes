@@ -2,7 +2,7 @@ import numpy as np
 import qutip as qt
 
 
-def gram_schmidt_orthonormal_pair(
+def compute_gram_schmidt_pair(
     psi0: qt.Qobj,
     psi1: qt.Qobj,
     tol: float = 1e-12,
@@ -21,7 +21,7 @@ def gram_schmidt_orthonormal_pair(
     return phi0, phi1
 
 
-def lowdin_orthonormal_pair(
+def compute_lowdin_pair(
     psi0: qt.Qobj,
     psi1: qt.Qobj,
     tol: float = 1e-12,

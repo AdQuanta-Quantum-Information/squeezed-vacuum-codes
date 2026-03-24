@@ -438,7 +438,7 @@ def mean_photon_number_for_gkp_codeword(m:int, nbar:float, logical_value:Logical
     if analytic_substitution:
         return nbar
         
-    state = gkp_code_state(b_nar=nbar, num_moments=cut_off, qubit_logical_value=logical_value, _prog_bar=False)
+    state = gkp_code_state(nbar=nbar, num_moments=cut_off, qubit_logical_value=logical_value, _prog_bar=False)
     return qutip_mean_photon_number(state)
 
 
@@ -943,7 +943,7 @@ def _get_logical_qutip_state(
 
 def _test8_parameter_solver_error_vs_qutip_mean(
     m: int = 2,
-    logical_value: LogicalValue = '+',
+    logical_value: LogicalValue = 0,
     target_mean_photon_numbers: list[float] = np.linspace(0.1, 5.1, 21).tolist(),
     num_moments: int = 100,
     code_types: list[_CodeTypes] = ['cat', 'squeeze', 'binomial', 'gkp'] #type: ignore

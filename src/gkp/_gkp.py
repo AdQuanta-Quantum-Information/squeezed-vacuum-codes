@@ -1,5 +1,6 @@
 from typing import overload, Literal
 import qutip as qt
+from qutip import Qobj
 
 import numpy as np
 
@@ -11,6 +12,10 @@ if __name__ == "__main__":
 
 from src.visualizations import plot_light_states, plot_fock_distribution
 from src.utils.prints import ProgressBar
+from src.utils.caches import cache
+
+from src.quantum.quantum_information import orthonormalization
+
 from src.gkp.num_photons import lookup_gkp_params_from_nbar, estimate_gkp_params_from_nbar, GKPParams
 from src.gkp.logical import gkp_logical
 
@@ -75,7 +80,7 @@ def gkp_from_nbar(
         logical_value=logical_value
     )
 
-    psi = gkp_logical(logical_value, N, Delta=Delta, kappa=kappa, s_max=s_max, ampl_cutoff=amp_cutoff, _prog_bar=_prog_bar)
+    psi = gkp_logical(logical_value, N, Delta=Delta, kappa=kappa, s_max=s_max, amp_cutoff=amp_cutoff, _prog_bar=_prog_bar)
 
     if not return_meta:
         return psi
@@ -94,6 +99,45 @@ def gkp_from_nbar(
         "q_squeezing_dB": float(-10.0 * np.log10(2.0 * Delta * Delta)),
     }
     return psi, meta
+
+
+def _get_gkp_params_for_pair_given_nbar(nbar: float) -> GKPParams:
+    """
+    Why do we need this? 
+    The same GKP params (Delta, kappa, r, s_max) can construct |0⟩ and |1⟩ logical states with different nbar. 
+    So we need to specify which logical_value we want when looking up the params for a given nbar.
+
+    Decision:
+    Get GKP params for a pair of GKP states with the same nbar, by looking up the params for `logical_value=0`.
+    """
+    return _gkp_params_from_nbar(nbar, logical_value=0)
+
+
+@cache(ram=True, disk=False)
+def get_cached_orthonormal_gkp_states(nbar: float, num_moments: int, _prog_bar: bool) -> tuple[Qobj, Qobj]:
+    Delta, kappa, r, s_max = _get_gkp_params_for_pair_given_nbar(nbar)
+    gkp_pair = [ 
+        gkp_logical(
+            logical_value, N=num_moments, Delta=Delta, kappa=kappa, s_max=s_max, _prog_bar=_prog_bar
+        )
+        for logical_value in range(2)
+    ]
+    gkp0, gkp1 = orthonormalization.compute_lowdin_pair(gkp_pair[0], gkp_pair[1])
+
+    if False == "FALSE":
+        plot_light_states(gkp_pair)
+        plot_light_states([gkp0, gkp1])
+
+    return gkp0, gkp1
+
+
+
+
+
+
+
+
+
 
 
 def _gkp_test_single(

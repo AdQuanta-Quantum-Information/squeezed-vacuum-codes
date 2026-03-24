@@ -216,3 +216,12 @@ class MonotonicInverseLookup(ABC, Generic[XType, YType]):
             return self.y_values, self.x_values
         return self.y_values[::-1], self.x_values[::-1]
 
+    def plot(self) -> None:
+        import matplotlib.pyplot as plt
+        plt.plot(self.x_values, self.y_values, marker='o')
+        plt.xlabel("x")
+        plt.ylabel("y")
+        plt.title("Monotonic Inverse Lookup Table")
+        plt.grid(True)
+        plt.show()
+

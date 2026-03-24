@@ -14,7 +14,7 @@ def gkp_logical(
     Delta: float = 0.2,
     kappa: float = 0.2,
     s_max: int | None = None,
-    ampl_cutoff: float = 1e-12,
+    amp_cutoff: float = 1e-12,
     _prog_bar: bool = True,
 ) -> qt.Qobj:
     """
@@ -34,7 +34,7 @@ def gkp_logical(
     peak_state = qt.squeeze(N, r) @ vac
 
     if s_max is None:
-        mmax = np.sqrt(2.0 * np.log(1.0 / ampl_cutoff)) / (kappa * np.sqrt(np.pi))
+        mmax = np.sqrt(2.0 * np.log(1.0 / amp_cutoff)) / (kappa * np.sqrt(np.pi))
         s_max = int(np.ceil((mmax - logical_val) / 2.0))
         s_max = max(s_max, 1)
 

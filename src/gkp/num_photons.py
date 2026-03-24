@@ -196,7 +196,7 @@ def _build_state_and_nbar(
         Delta=Delta,
         kappa=kappa,
         s_max=s_max,
-        ampl_cutoff=amp_cutoff,
+        amp_cutoff=amp_cutoff,
         _prog_bar=_prog_bar,
     )
     state.unit(inplace=True)

@@ -16,6 +16,6 @@ def recommended_N_from_nbar(nbar: float, safety_sigma: float = 4.0):
     sigma_n = np.sqrt(2.0 * nbar * (nbar + 1.0))
     
     # 2. Add the mean, a safety multiplier for the tails, and a flat buffer for very low nbar
-    N_cutoff = nbar + (safety_sigma * sigma_n) + 15
+    N_cutoff = nbar + (safety_sigma * sigma_n) + 20
     
     return int(np.ceil(N_cutoff))

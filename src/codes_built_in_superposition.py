@@ -18,18 +18,24 @@ from src.utils.caches import cache
 from src.squeezing_direction import squeezing_direction_to_squeezing_phase
 from src._numerics import π, exp
 
-from src.gkp import gkp_from_nbar
+from src.gkp import gkp_from_nbar, get_cached_orthonormal_gkp_states
 
 from globals import Globals
 
 
-from typing import TypeAlias, Literal, Generator, cast
+from typing import TypeAlias, Literal, Generator, cast, Final
 _CodeTypes : TypeAlias = Literal["cat", "squeeze", "binomial", "gkp"]
 
 
 if Globals.PRECISE:
     if "auto_tidyup" in qutip.settings.core:
         qutip.settings.core["auto_tidyup"] = False
+
+
+## whether to apply Löwdin orthogonalization to the GKP states, to make them exactly orthogonal. 
+# This is needed for some applications, but not for others. Set to False if you want the "standard" GKP states.
+USE_LOWDIN_ORTHOGONALIZATION_FOR_GKP : Final[bool] = True  
+
 
 
 def _project_ket_to_residue(psi: Qobj, N: int, ell: int) -> Qobj:
@@ -88,7 +94,7 @@ def simple_m_legged_state(
         assert m == 1, "If we got here with m not 1 for gkp code, this is a bug. (since it's not really an m-legged code)."
         assert num_qudit_values == 2, "Number of qudit values must be exactly 2 for gkp code. No support for qudits yet."
         return gkp_code_state(
-            b_nar=s, num_moments=num_moments, qubit_logical_value=qubit_logical_value,
+            nbar=s, num_moments=num_moments, qubit_logical_value=qubit_logical_value,
             _force_normalized=_force_normalized,
             _prog_bar=_prog_bar
         )
@@ -263,18 +269,37 @@ def binomial_code_state(
 
 
 def gkp_code_state(
-    b_nar: float,
+    nbar: float,
     num_moments: int,
     qubit_logical_value: int = 0,
     *,
+    lowdin_orthogonalize: bool = USE_LOWDIN_ORTHOGONALIZATION_FOR_GKP,  
     _force_normalized: bool = True,
     _prog_bar: bool = True
 ) -> Qobj:
     
+    if lowdin_orthogonalize:
+        ## If we want a state that is orthogonal to the other logical state, 
+        # we need to first create both states, and then apply Löwdin-orthogonalization [1] to them together.
+        # This function will still only output one of the states. The partner state is stored in cache and can 
+        # be retrieved by calling this function again with the opposite logical value.
+        # [1] Löwdin, P.O. J. Chem, Phys. 1950.
+        if not _force_normalized:
+            raise ValueError("If lowdin_orthogonalize is True, we must also force normalization to be True.")
+        
+        orthonormal_states = get_cached_orthonormal_gkp_states(
+            nbar=nbar, 
+            num_moments=num_moments, 
+            _prog_bar=_prog_bar
+        )
+        return orthonormal_states[qubit_logical_value]  
+
+
+
     gkp_state = gkp_from_nbar(
         logical_value=qubit_logical_value,
         N=num_moments,
-        nbar_target=b_nar,
+        nbar_target=nbar,
         return_meta=False,
         _prog_bar=_prog_bar
     )
@@ -285,6 +310,8 @@ def gkp_code_state(
     return gkp_state
 
 
+## This is a cached version of get_m_legged_states, defined below.
+# This also supports choosing between standard and dual basis states.
 @cache(ram=True, disk=False)
 def _get_m_legged_states_before_deciding_on_basis(
     m: int, strength: float, num_moments: int, code_type: _CodeTypes,
@@ -293,8 +320,7 @@ def _get_m_legged_states_before_deciding_on_basis(
     ψ0, ψ1 = simple_m_legged_code(m=m, strength=strength, num_moments=num_moments, code_type=code_type, _force_normalized=normalize_logical_states_before_applying_hadamard)
     return ψ0, ψ1
 
-## This is a cached version of get_m_legged_states, defined below.
-# This also supports choosing between standard and dual basis states.
+
 def get_m_legged_states(
     m: int, strength: float, num_moments: int, code_type: _CodeTypes, 
     use_dual_code: bool = False, 

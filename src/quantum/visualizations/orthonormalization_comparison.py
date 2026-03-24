@@ -5,9 +5,9 @@ import matplotlib.pyplot as plt
 import qutip as qt
 from globals import Globals
 
-from src.quantum.quantum_information import (
-    gram_schmidt_orthonormal_pair,
-    lowdin_orthonormal_pair,
+from src.quantum.quantum_information.orthonormalization import (
+    compute_gram_schmidt_pair,
+    compute_lowdin_pair,
 )
 from src.quantum.visualizations.wigner_function import plot_plain_wigner
 
@@ -47,8 +47,8 @@ def compare_orthonormalization_methods_for_states(
 
     physical_overlap_abs = float(np.abs(p0.overlap(p1)))
 
-    phi0_gs, phi1_gs = gram_schmidt_orthonormal_pair(p0, p1)
-    phi0_low, phi1_low = lowdin_orthonormal_pair(p0, p1)
+    phi0_gs, phi1_gs = compute_gram_schmidt_pair(p0, p1)
+    phi0_low, phi1_low = compute_lowdin_pair(p0, p1)
 
     gs_overlap_abs = float(np.abs(phi0_gs.overlap(phi1_gs)))
     low_overlap_abs = float(np.abs(phi0_low.overlap(phi1_low)))
