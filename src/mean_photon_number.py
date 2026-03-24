@@ -50,8 +50,8 @@ alpha_symbol = sp.symbols('α')
 
 
 LOWER_THRESHOLD_FOR_1_LOGICAL_STATE_PER_CODE: dict[_CodeTypes, Callable[[int], float]] = {
-    'cat': lambda m: float(m) / 4.0,
-    'squeeze': lambda m: float(m) / 2.0,
+    'cat': lambda m: float(m) / 2.0,
+    'squeeze': lambda m: float(m),
     'binomial': lambda m: float(m),
     'gkp': lambda m: 1.5,
 }
@@ -942,8 +942,8 @@ def _get_logical_qutip_state(
 
 
 def _test8_parameter_solver_error_vs_qutip_mean(
-    m: int = 6,
-    logical_value: LogicalValue = 0,
+    m: int = 2,
+    logical_value: LogicalValue = '+',
     target_mean_photon_numbers: list[float] = np.linspace(0.1, 5.1, 21).tolist(),
     num_moments: int = 100,
     code_types: list[_CodeTypes] = ['cat', 'squeeze', 'binomial', 'gkp'] #type: ignore
@@ -968,10 +968,11 @@ def _test8_parameter_solver_error_vs_qutip_mean(
 
             m_for_code = 1 if code_type == 'gkp' else m
 
-            # # Check if target mean photon number is above the minimum threshold for this code; 
-            # min_target_for_code = LOWER_THRESHOLD_FOR_1_LOGICAL_STATE_PER_CODE[code_type](m_for_code)
-            # if target_mean_photon_number < min_target_for_code:
-            #     continue
+            if logical_value in ["+", 1]:
+                # Check if target mean photon number is above the minimum threshold for this code; 
+                min_target_for_code = LOWER_THRESHOLD_FOR_1_LOGICAL_STATE_PER_CODE[code_type](m_for_code)
+                if target_mean_photon_number < min_target_for_code:
+                    continue
 
             parameter = find_parameter_for_target_mean_photon_number(
                 code_type=code_type,
@@ -1001,9 +1002,9 @@ def _test8_parameter_solver_error_vs_qutip_mean(
     }
     markers = {
         'cat': 'o',
-        'squeeze': 's',
-        'binomial': '^',
-        'gkp': 'D',
+        'squeeze': 'o',
+        'binomial': 'o',
+        'gkp': 'o',
     }
 
     for code_type in code_types:
