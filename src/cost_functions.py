@@ -79,7 +79,7 @@ class _SpecificBasisOptionType(TypedDict):
 ## Constants:
 PROG_BAR_SIGNIFICANT_DIGITS : Final[int] = 6
 NORMALIZE_LOGICAL_STATES_BEFORE_APPLYING_HADAMARD : Final[bool] = True
-TARGET_STATE_FOR_MEAN_NUMBER_CALCULATION : Final[int|Literal['+']] = "+"
+TARGET_STATE_FOR_MEAN_NUMBER_CALCULATION : Final[Literal[0, 1, '+']] = 0
 
 
 def _cache_function():
