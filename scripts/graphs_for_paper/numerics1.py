@@ -18,7 +18,7 @@ if __name__ == "__main__":
     from __init__ import add_root_to_path
     path = add_root_to_path()
 
-from src.utils.visuals.matplotlib_support import save_figure, draw_now, add_magnification_glass_inset, InsetAxesBounds
+from src.utils.visuals.matplotlib_support import save_figure, draw_now, add_magnification_glass_inset, PlotBoxBounds
 from src.utils.visuals.colors import color_shades, _RgbFloatTuple
 from src.utils.prints import ProgressBar
 from src.utils.strings import format_float_for_as_str
@@ -306,32 +306,36 @@ def _get_text_pos(
 def _add_magnification_glass(
     ax: Axes,
     noise_type: BosonicNoiseType,
-    x_scale: Literal["linear", "log"] = "log",
-    y_scale: Literal["linear", "log"] = "log",
 ) -> Axes | None:
-    """Apply numerics1 defaults for the magnification-glass style inset."""
-    if noise_type == "loss":
-        inset_axes_bounds = InsetAxesBounds(x0=0.54, y0=0.04, width=0.42, height=0.36)
-    else:
-        inset_axes_bounds = InsetAxesBounds(x0=0.52, y0=0.04, width=0.44, height=0.36)
+    """Apply numerics1 fixed magnification-glass bounds.
 
-    return add_magnification_glass_inset(
+    Bounds are explicit by design: no interpolation and no axis-derived windows.
+    """
+
+    if noise_type == "loss":
+        magnified_bounds = PlotBoxBounds(x0=0.2, x1=0.7, y0=0.3, y1=5.0)
+        inset_bounds = PlotBoxBounds(x0=0.60, y0=0.10, width=0.35, height=0.35)
+    else:
+        magnified_bounds = PlotBoxBounds(x0=3.0e-2, x1=1.0, y0=0.5, y1=0.6e+2)
+        inset_bounds = PlotBoxBounds(x0=0.60, y0=0.10, width=0.35, height=0.35)
+
+    ax_out = add_magnification_glass_inset(
         ax=ax,
-        x_scale=x_scale,
-        y_scale=y_scale,
-        x_window=None,
-        y_window=None,
-        x_window_rel_start=0.86,
-        y_padding_ratio=0.18,
-        inset_axes_bounds=inset_axes_bounds,
-        border_color="red",
-        border_linewidth=1.8,
-        connector_linewidth=1.3,
+        magnified_data_bounds=magnified_bounds,
+        inset_axes_bounds=inset_bounds,
+        inset_axes_bounds_units='axes-window-fraction',
+        use_readable_ticks=True,
+        readable_tick_count=3,
+        border_color="gray",
+        border_linewidth=2.0,
+        connector_linewidth=1.8,
         connector_loc1=2,
         connector_loc2=4,
-        hide_inset_ticks=True,
-        inset_tick_fontsize=8,
+        hide_inset_ticks=False,
+        inset_tick_fontsize=9,
     )
+
+    return ax_out
 
 
 def _add_unified_legend_for_both_axes(
@@ -761,7 +765,7 @@ def _plot_results(
                     ax, label_data, 
                     min_y_distance_factor=1.5,
                     x_scale=x_scale,
-                    y_scale=y_scale
+                    y_scale=type_cast(Literal["linear", "log"], ax.get_yscale())
                 )
                 
                 # Add labels with adjusted positions
@@ -784,8 +788,8 @@ def _plot_results(
         raise ValueError(f"Unknown label_style: {label_style!r}")
 
     if enable_magnification_glass:
-        _add_magnification_glass(axes["loss"], noise_type="loss", x_scale=x_scale, y_scale="log")
-        _add_magnification_glass(axes["dephasing"], noise_type="dephasing", x_scale=x_scale, y_scale="log")
+        _add_magnification_glass(axes["loss"], noise_type="loss")
+        _add_magnification_glass(axes["dephasing"], noise_type="dephasing")
 
     if figure_title != "":
         fig.suptitle(figure_title, fontsize=text_font_size)
@@ -823,14 +827,23 @@ def _plot_results(
     return fig, axes, legend
 
 
+
+
+def _num_moments_per_gamma(gamma:float) -> int:
+    """Determine number of moments based on gamma."""
+    if gamma <= 1e-2:
+        return 200
+    else:
+        return 300
+
 def plot_full_codewords_numeric_figure_x_is_gamma(
-    num_moments : int = 300,
+    num_moments : int|Callable[[float], int] = _num_moments_per_gamma,
     num_code_states:int = 3,
     with_gkp:bool = True,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00"
     noise_method : NoiseOptionLiteral = "kraus-KL-style",  # "simulated", "kraus-KL-style", "kraus-channel"
     mean_photon_number : float = 3.0,
-    enable_magnification_glass: bool = False,
+    enable_magnification_glass: bool = True
 ) -> None:
 
     ## ========= Inputs =========:
@@ -879,12 +892,13 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
         N=num_moments,
         loss_basis="main",
         dephasing_basis="dual",
-        enable_magnification_glass=enable_magnification_glass,
+        enable_magnification_glass=enable_magnification_glass
     )
 
     ## Wait for user to close:
     draw_now()
-    # input("Press Enter to close the plots and end the program...")
+    input("Press Enter to close the plots and end the program...")
+    print("Done.")
 
 
 def _num_moments_func(mean_n: float) -> int:
@@ -964,7 +978,7 @@ def plot_full_codewords_numeric_figure_x_is_nbar(
 
 
 if __name__ == "__main__":
-    plot_full_codewords_numeric_figure_x_is_gamma()
-    # plot_full_codewords_numeric_figure_x_is_nbar()
+    # plot_full_codewords_numeric_figure_x_is_gamma()
+    plot_full_codewords_numeric_figure_x_is_nbar()
     draw_now()
     input("Press Enter to close the plots and end the program...")
