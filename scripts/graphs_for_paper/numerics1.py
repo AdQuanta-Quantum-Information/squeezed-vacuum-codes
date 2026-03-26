@@ -857,7 +857,7 @@ def _plot_results(
 
     file_name = ""\
         + figure_name_prefix \
-        + measurement  \
+        + " "+measurement  \
         + f" - {noise_method}" \
         + (f" - N={N}" if isinstance(N, (int,float)) else "") \
         + (f" - {figure_name_extra}" if figure_name_extra else "") \
