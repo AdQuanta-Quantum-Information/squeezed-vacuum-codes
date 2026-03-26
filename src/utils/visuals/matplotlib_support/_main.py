@@ -215,6 +215,7 @@ def add_magnification_glass_inset(
     connector_linewidth: float = 1.3,
     connector_loc1: int = 2,
     connector_loc2: int = 4,
+    auto_avoid_diagonal_connectors: bool = True,
     hide_inset_ticks: bool = True,
     inset_tick_fontsize: int = 8,
 ) -> Axes | None:
@@ -224,6 +225,10 @@ def add_magnification_glass_inset(
     - "data": original axis data units
     - "axes-window-fraction": fractions in the current visible axis window
       (0 means window minimum, 1 means window maximum on each axis).
+
+        When ``auto_avoid_diagonal_connectors`` is enabled, connector corner
+        indices are adjusted automatically in overlap cases to prefer edge-aligned
+        connectors over long diagonals crossing the inset interior.
     """
 
     def _axis_value_to_scaled(value: float, scale: str, axis_name: str) -> float:
@@ -296,6 +301,7 @@ def add_magnification_glass_inset(
     y_scale = ax.get_yscale()
 
     magnified_bounds_data = _to_data_bounds(magnified_data_bounds, magnified_data_bounds_units)
+    magnified_bounds_fraction = _to_inset_axes_fraction_bounds(magnified_bounds_data, "data")
     inset_bounds_fraction = _to_inset_axes_fraction_bounds(inset_axes_bounds, inset_axes_bounds_units)
 
     x_window: tuple[float, float] | None = None
@@ -435,11 +441,34 @@ def add_magnification_glass_inset(
         spine.set_edgecolor(border_color)
         spine.set_linewidth(border_linewidth)
 
+    mark_loc1 = connector_loc1
+    mark_loc2 = connector_loc2
+
+    if auto_avoid_diagonal_connectors:
+        roi = magnified_bounds_fraction
+        inset = inset_bounds_fraction
+
+        x_overlap = min(roi.x1, inset.x1) > max(roi.x0, inset.x0)
+        y_overlap = min(roi.y1, inset.y1) > max(roi.y0, inset.y0)
+
+        # Corner indices follow Matplotlib convention:
+        # 1=upper-right, 2=upper-left, 3=lower-left, 4=lower-right.
+        if x_overlap and not y_overlap:
+            if roi.y1 <= inset.y0:
+                mark_loc1, mark_loc2 = 3, 4
+            elif roi.y0 >= inset.y1:
+                mark_loc1, mark_loc2 = 1, 2
+        elif y_overlap and not x_overlap:
+            if roi.x1 <= inset.x0:
+                mark_loc1, mark_loc2 = 2, 3
+            elif roi.x0 >= inset.x1:
+                mark_loc1, mark_loc2 = 1, 4
+
     mark_inset(
         ax,
         inset_ax,
-        loc1=connector_loc1,
-        loc2=connector_loc2,
+        loc1=mark_loc1,
+        loc2=mark_loc2,
         fc="none",
         ec=border_color,
         lw=connector_linewidth,

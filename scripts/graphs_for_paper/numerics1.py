@@ -323,7 +323,7 @@ def _override_inset_xticks(inset_ax: Axes) -> None:
     """
     x_min, x_max = sorted(inset_ax.get_xlim())
 
-    preferred_ticks = np.array([0.03, 0.05, 0.07, 0.09], dtype=float)
+    preferred_ticks = np.array([0.03, 0.05, 0.07, 0.10], dtype=float)
     ticks = preferred_ticks[(preferred_ticks >= x_min) & (preferred_ticks <= x_max)]
 
     if ticks.size == 0:
@@ -351,13 +351,12 @@ def _add_magnification_glass(
             x0=0.030, x1=_end_of_lines("x", ax, padding_constant=0.01), 
             y0=0.005, y1=_end_of_lines("y", ax, padding_constant=0.6)
         )
-        inset_bounds = PlotBoxBounds(x0=0.60, y0=0.10, width=0.35, height=0.35)
     else:
         magnified_bounds = PlotBoxBounds(
             x0=2.5e-2, x1=_end_of_lines("x", ax, padding_constant=0.01), 
             y0=0.3,    y1=_end_of_lines("y", ax, padding_constant=1.5)
         )
-        inset_bounds = PlotBoxBounds(x0=0.60, y0=0.10, width=0.35, height=0.35)
+    inset_bounds = PlotBoxBounds(x0=0.57, y0=0.07, width=0.40, height=0.40)
 
 
     ax_out = add_magnification_glass_inset(
@@ -368,7 +367,7 @@ def _add_magnification_glass(
         use_readable_ticks=True,
         readable_tick_count=3,
         border_color="gray",
-        border_linewidth=2.0,
+        border_linewidth=1.8,
         connector_linewidth=1.8,
         connector_loc1=2,
         connector_loc2=4,
@@ -881,7 +880,7 @@ def _num_moments_per_gamma(gamma:float) -> int:
         return 300
 
 def plot_full_codewords_numeric_figure_x_is_gamma(
-    num_moments : int|Callable[[float], int] = 300, # _num_moments_per_gamma,
+    num_moments : int|Callable[[float], int] = _num_moments_per_gamma, # _num_moments_per_gamma,
     num_code_states:int = 3,
     with_gkp:bool = True,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00"
@@ -1007,21 +1006,23 @@ def plot_full_codewords_numeric_figure_x_is_nbar(
         per_code_results[code] = results 
 
     ## ========= Plot =========:
-    fig, axes, legend = _plot_results(
-        per_code_results, 
-        x_vec_name=x_vec_name,
-        x_vec=photon_num_vec,
-        measurement=measurement,
-        noise_method=noise_method,
-        loss_basis=loss_basis,
-        dephasing_basis=dephasing_basis,
-        figure_name_prefix="x-is-nbar",
-        figure_name_extra=f"γ={gamma_file_str}",
-        N=num_moments,
-        x_scale = 'linear',
-        enable_magnification_glass=enable_magnification_glass,
-        # figure_title=f"Noise rate {γ_str} = {gamma_title_str}"
-    )
+    for vertical_plots in [False, True]:
+        fig, axes, legend = _plot_results(
+            per_code_results, 
+            x_vec_name=x_vec_name,
+            x_vec=photon_num_vec,
+            measurement=measurement,
+            noise_method=noise_method,
+            loss_basis=loss_basis,
+            dephasing_basis=dephasing_basis,
+            figure_name_prefix="x-is-nbar",
+            figure_name_extra=f"γ={gamma_file_str}",
+            N=num_moments,
+            x_scale = 'linear',
+            enable_magnification_glass=enable_magnification_glass,
+            vertical_plots=vertical_plots,
+            _connected_plots=vertical_plots
+        )
 
     draw_now()
     # input("Press Enter to close the plots and end the program...")
