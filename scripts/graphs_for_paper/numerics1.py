@@ -29,6 +29,7 @@ from src.cost_functions import compute_cost_on_logical_codewords
 from src.cost_functions import MeasurementTypeLiteral, NoiseOptionLiteral, BosonicNoiseType, CostPerNoiseDict, CostPerLegsPerNoiseDict, CostPerLogicalBasis, LogicalBasisName, _SpecificBasisOptionType
 
 from globals import Globals
+
 from _visual_helper import (
     _NumMomentsFuncType,
     latex_toggled_str as _latex_toggled_str,
@@ -871,6 +872,10 @@ def _plot_results(
 
 
 
+loss_basis: LogicalBasisName = "main"
+dephasing_basis: LogicalBasisName = "dual"
+
+
 
 def _num_moments_per_gamma(gamma:float) -> int:
     """Determine number of moments based on gamma."""
@@ -882,7 +887,6 @@ def _num_moments_per_gamma(gamma:float) -> int:
 def plot_full_codewords_numeric_figure_x_is_gamma(
     num_moments : int|Callable[[float], int] = _num_moments_per_gamma, # _num_moments_per_gamma,
     num_code_states:int = 3,
-    with_gkp:bool = True,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00"
     noise_method : NoiseOptionLiteral = "kraus-KL-style",  # "simulated", "kraus-KL-style", "kraus-channel"
     mean_photon_number : float = 3.0,
@@ -898,15 +902,11 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
     # γ_vec += np.logspace(-1, +0, 12).tolist()[1:-1]
     γ_vec = [γ for γ in γ_vec if γ <= 0.1]
 
-    if with_gkp:
-        codes = ["squeeze", "cat", "binomial", "gkp"]
-    else:
-        codes = ["squeeze", "cat", "binomial"]
 
     ## ========= Compute =========:
     per_code_results : dict[_CodeTypes, CostPerLegsPerNoiseDict] = dict()
 
-    for code in ProgressBar(codes, prefix="different code  "):
+    for code in ProgressBar(["squeeze", "cat", "binomial", "gkp"], prefix="different code  "):
         ProgressBar.newest().append_extra_str(f"{code!r}")
         code = type_cast(_CodeTypes, code)
 
@@ -922,7 +922,8 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
             num_code_states=num_code_states,
             code=code,
             measurement=measurement,
-            noise_method=noise_method
+            noise_method=noise_method,
+            specific_bases=_SpecificBasisOptionType(loss=loss_basis, dephasing=dephasing_basis)
         )
         per_code_results[code] = results 
 
@@ -937,8 +938,8 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
             figure_name_prefix="x-is-gamma",
             figure_name_extra=f"n-bar={mean_photon_number}",
             N=num_moments,
-            loss_basis="main",
-            dephasing_basis="dual",
+            loss_basis=loss_basis,
+            dephasing_basis=dephasing_basis,
             enable_magnification_glass=enable_magnification_glass,
             vertical_plots=vertical_plots,
             _connected_plots=vertical_plots
@@ -953,19 +954,17 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
 def _num_moments_func(mean_n: float) -> int:
     """Determine number of moments based on mean photon number."""
     n = 50*int(np.ceil(mean_n))
-    n = max(n, 50)  # enforce a minimum of 50 moments for low photon numbers
-    n = min(n, 200) # enforce a maximum of 200 moments for high photon numbers to keep runtime reasonable
+    n = max(n, 100) # enforce a minimum of 100 moments for low photon numbers
+    n = min(n, 300) # enforce a maximum of 300 moments for high photon numbers to keep runtime reasonable
     return n
 
 
 def plot_full_codewords_numeric_figure_x_is_nbar(
     num_moments: int|_NumMomentsFuncType = _num_moments_func,
-    photon_num_vec = [float(n) for n in np.linspace(0.0, 5.0, 31)],
+    photon_num_vec = [float(n) for n in np.linspace(0.0, 5.0, 61)],
     num_code_states:int = 3,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00", "fidelity01", "fidelity00"
     noise_method : NoiseOptionLiteral = "kraus-KL-style",  # "simulated", "kraus" "kraus-channel"
-    loss_basis: LogicalBasisName = "main",
-    dephasing_basis: LogicalBasisName = "dual",
     γ = 1e-2,
     enable_magnification_glass: bool = False,
 ) -> None:
@@ -1025,11 +1024,12 @@ def plot_full_codewords_numeric_figure_x_is_nbar(
         )
 
     draw_now()
-    # input("Press Enter to close the plots and end the program...")
+    input("Press Enter to close the plots and end the program...")
+    print(f"Done.")
 
 
 if __name__ == "__main__":
     plot_full_codewords_numeric_figure_x_is_gamma()
-    # plot_full_codewords_numeric_figure_x_is_nbar()
+    plot_full_codewords_numeric_figure_x_is_nbar()
     draw_now()
     input("Press Enter to close the plots and end the program...")
