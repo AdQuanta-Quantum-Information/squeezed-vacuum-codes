@@ -3,11 +3,13 @@
 Test script to verify the safe factorial functions work correctly.
 """
 import numpy as np
-import sys
-import os
 
-# Add the src directory to the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+# Use project-standard path setup
+try:
+    from tests._bootstrap import add_root_to_path
+except ModuleNotFoundError:
+    from _bootstrap import add_root_to_path
+add_root_to_path()
 
 from src.utils import maths
 

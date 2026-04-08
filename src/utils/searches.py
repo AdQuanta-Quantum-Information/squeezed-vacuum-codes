@@ -10,6 +10,7 @@ import numpy as np
 from math import floor
 from typing import Callable, Tuple, Optional, Union, Any
 from collections import deque
+from enum import Enum
 
 from ..utils.prints import ProgressBar
 
@@ -18,6 +19,19 @@ from ..utils.prints import ProgressBar
 # =================================================================================== #
 DEFAULT_TOL = 1e-15
 DEFAULT_MAX_ITERS = 10_000
+DEFAULT_ERROR_EDGE_EPSILON = 1e-20
+DEFAULT_ENDPOINT_STABILIZE_MAX_STEPS = 10_000
+
+
+class MoveDirection(Enum):
+    LOW_UP = "low_up"
+    HIGH_DOWN = "high_down"
+
+    @property
+    def opposite(self) -> "MoveDirection":
+        if self is MoveDirection.LOW_UP:
+            return MoveDirection.HIGH_DOWN
+        return MoveDirection.LOW_UP
 
 # ==================================================================================== #
 #|                                Declared functions                                  |#
@@ -115,20 +129,20 @@ def binary_search_callable_increasing(
     """
     lo, hi = x_bounds
 
-    ## Validate inputs and assumption that f is increasing on [lo, hi]
-    _validate_monotonicity_and_inputs(lo, hi, f, target)
-    assert max_iters > 0, "max_iters must be positive"
-
     # Infer integer mode when not explicitly provided
     if integer is None:
         integer = isinstance(lo, int) and isinstance(hi, int)
+
+    ## Validate inputs and assumption that f is increasing on [lo, hi]
+    lo, hi = _validate_monotonicity_and_inputs(lo, hi, f, target, integer=integer)
+    assert max_iters > 0, "max_iters must be positive"
 
     ## Initialize variables:
     iters = 0  # set counter
     y : float = None  #type: ignore  
     mid : float = None  #type: ignore
 
-    # Determine stopping condition based on mode
+    ## Determine stopping condition based on mode
     if integer:
         x_low = int(lo)
         x_high = int(hi)
@@ -143,6 +157,7 @@ def binary_search_callable_increasing(
             return (x_high - x_low) <= x_tol 
 
     i = -1  # For progress tracking
+    previous_move_direction: MoveDirection = MoveDirection.LOW_UP  # Initialize to a default direction for backtracking on errors
 
     def stop_condition() -> bool:
         if i < 1:
@@ -151,7 +166,7 @@ def binary_search_callable_increasing(
         if x_stop_condition():
              return True
         
-        if abs(y - target) < y_tol:
+        if y is not None and abs(y - target) < y_tol:
             return True
         
         return False
@@ -161,6 +176,7 @@ def binary_search_callable_increasing(
         iterator = ProgressBar.range(max_iters, prefix="Binary search: ", suffix=" iters")  
     else:
         iterator = range(max_iters)
+
 
     for i in iterator:
         if stop_condition():
@@ -177,15 +193,36 @@ def binary_search_callable_increasing(
         if integer:
             mid = int(floor(mid))
 
-        y = f(mid)
+
+        ## Evaluate f at mid and take errors into account:
+        try:
+            y = f(mid)
+            
+        except ArithmeticError:
+            x_low, x_high, move_direction = _nudge_edge_after_arithmetic_error(
+                x_low=x_low,
+                x_high=x_high,
+                integer=integer,
+                previous_move_direction=previous_move_direction,
+            )
+
+            iters += 1
+            continue
+
+        else:
+            move_direction: MoveDirection = MoveDirection.LOW_UP if y < target else MoveDirection.HIGH_DOWN
         
         ## Update bounds based on f(mid) vs target:
-        if y < target:
+        if move_direction is MoveDirection.LOW_UP:
             x_low = mid + (1 if integer else 0)
-        else:
+        elif move_direction is MoveDirection.HIGH_DOWN:
             x_high = mid
+        else:
+            raise AssertionError(f"Unexpected move direction: {move_direction}")
+        
         iters += 1
 
+        previous_move_direction = move_direction
         
     else:
          ## Failure to converge within max_iters
@@ -209,25 +246,116 @@ def binary_search_callable_increasing(
 #|                             Internal helper functions                              |#
 # ==================================================================================== #
 
-def _validate_monotonicity_and_inputs(lo: float, hi: float, f: Callable[[float], float], target: float) -> None:
-	if lo > hi:
-		raise ValueError(f"Expected lo <= hi, got lo={lo}, hi={hi}")
-	y_low = f(lo)
-	y_high = f(hi)
-	if y_low > y_high:
-		raise ValueError(
-			f"Function is not monotonic non-decreasing on [{lo}, {hi}]: "
-			f"f(lo)={y_low} > f(hi)={y_high}"
-		)
+def _nudge_edge_after_arithmetic_error(
+    x_low: float | int,
+    x_high: float | int,
+    integer: bool,
+    previous_move_direction: MoveDirection,
+) -> tuple[float | int, float | int, MoveDirection]:
+    """Backtrack one side of the bracket after an arithmetic evaluation failure."""
+    move_direction = previous_move_direction.opposite
 
-	if y_low > target:
-		raise ValueError(
-			f"Invalid bracket: f(lo)={y_low} > target={target}. Need f(lo) <= target."
-		)
-	if y_high < target:
-		raise ValueError(
-			f"Invalid bracket: f(hi)={y_high} < target={target}. Need f(hi) >= target."
-		)
+    if move_direction is MoveDirection.LOW_UP:
+        if integer:
+            x_low = min(x_high, x_low + 1)
+        else:
+            x_low = min(x_high, x_low + DEFAULT_ERROR_EDGE_EPSILON)
+    elif move_direction is MoveDirection.HIGH_DOWN:
+        if integer:
+            x_high = max(x_low, x_high - 1)
+        else:
+            x_high = max(x_low, x_high - DEFAULT_ERROR_EDGE_EPSILON)
+    else:
+        raise AssertionError(f"Unexpected move direction: {move_direction}")
+
+    return x_low, x_high, move_direction
+
+
+def _validate_monotonicity_and_inputs(
+    lo: float,
+    hi: float,
+    f: Callable[[float], float],
+    target: float,
+    *,
+    integer: bool,
+) -> tuple[float, float]:
+    if lo > hi:
+        raise ValueError(f"Expected lo <= hi, got lo={lo}, hi={hi}")
+
+    stable_lo, y_low = _stabilize_endpoint_for_error_inducing_points(
+        x=lo,
+        boundary=hi,
+        f=f,
+        integer=integer,
+        move_direction=MoveDirection.LOW_UP,
+        label="lo",
+    )
+    stable_hi, y_high = _stabilize_endpoint_for_error_inducing_points(
+        x=hi,
+        boundary=stable_lo,
+        f=f,
+        integer=integer,
+        move_direction=MoveDirection.HIGH_DOWN,
+        label="hi",
+    )
+
+    if stable_lo > stable_hi:
+        raise ValueError(
+            f"Could not stabilize bounds after arithmetic errors: lo={stable_lo}, hi={stable_hi}."
+        )
+
+    if y_low > y_high:
+        raise ValueError(
+            f"Function is not monotonic non-decreasing on [{stable_lo}, {stable_hi}]: "
+            f"f(lo)={y_low} > f(hi)={y_high}"
+        )
+
+    if y_low > target:
+        raise ValueError(
+            f"Invalid bracket: f(lo)={y_low} > target={target}. Need f(lo) <= target."
+        )
+    if y_high < target:
+        raise ValueError(
+            f"Invalid bracket: f(hi)={y_high} < target={target}. Need f(hi) >= target."
+        )
+
+    return stable_lo, stable_hi
+
+
+def _stabilize_endpoint_for_error_inducing_points(
+    x: float,
+    boundary: float,
+    f: Callable[[float], float],
+    integer: bool,
+    move_direction: MoveDirection,
+    label: str,
+) -> tuple[float, float]:
+    """Evaluate f at x, nudging inward when ArithmeticError occurs until stable."""
+    for _ in range(DEFAULT_ENDPOINT_STABILIZE_MAX_STEPS):
+        try:
+            y = f(x)
+            return x, y
+        except ArithmeticError:
+            if move_direction is MoveDirection.LOW_UP:
+                if integer:
+                    x = min(boundary, x + 1)
+                else:
+                    x = min(boundary, x + DEFAULT_ERROR_EDGE_EPSILON)
+            elif move_direction is MoveDirection.HIGH_DOWN:
+                if integer:
+                    x = max(boundary, x - 1)
+                else:
+                    x = max(boundary, x - DEFAULT_ERROR_EDGE_EPSILON)
+            else:
+                raise AssertionError(f"Unexpected move direction: {move_direction}")
+
+            if x == boundary:
+                break
+
+    raise ArithmeticError(
+        f"Could not stabilize endpoint '{label}' after ArithmeticError by moving "
+        f"{move_direction.value} toward boundary={boundary}."
+    )
      
     
 def _all_close_in_list(list_:list[float], tol:float=1e-6) -> bool:

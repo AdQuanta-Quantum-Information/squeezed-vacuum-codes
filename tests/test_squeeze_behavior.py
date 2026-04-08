@@ -3,8 +3,12 @@
 Test script to demonstrate why stronger squeezing leads to worse performance.
 """
 
-import sys
-sys.path.append('.')
+# Use project-standard path setup
+try:
+    from tests._bootstrap import add_root_to_path
+except ModuleNotFoundError:
+    from _bootstrap import add_root_to_path
+add_root_to_path()
 
 import numpy as np
 import matplotlib.pyplot as plt

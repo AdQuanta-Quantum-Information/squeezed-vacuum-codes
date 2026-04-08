@@ -27,10 +27,16 @@ from src.codes_built_in_superposition import simple_m_legged_code, simple_m_legg
 from globals import Globals
 from src import bosonic_operators
 
+from src.gkp import gkp_params_from_nbar
+
+
 
 ## Types:
 # Type that is either a float or a sympy expression:
 _NumberOrSympyExpr = TypeVar('_NumberOrSympyExpr', float, sp.Expr)
+
+# Logical qubit value used across code families
+LogicalValue = Literal[0, 1, '+']
 
 
 TESTS_NUM_MOMENTS : Final[int] = 100
@@ -40,6 +46,15 @@ DEFAULT_UPPER_BOUND_FOR_SEARCH : Final[float] = 10.0
 r_symbol = sp.symbols('r')
 L_symbol = sp.symbols('L')
 alpha_symbol = sp.symbols('α') 
+
+
+
+LOWER_THRESHOLD_FOR_1_LOGICAL_STATE_PER_CODE: dict[_CodeTypes, Callable[[int], float]] = {
+    'cat': lambda m: float(m) / 2.0,
+    'squeeze': lambda m: float(m),
+    'binomial': lambda m: float(m),
+    'gkp': lambda m: 1.5,
+}
 
 
 i = sp.I
@@ -154,20 +169,24 @@ def _solve_equation_with_optimization_tools(
     ## First try with a simple binary search, else, use scipy minimization:
     x_solution, y_solution = binary_search_callable_increasing(func, target_value, x_bounds)
 
-    assert np.isclose(y_solution, target_value, atol=1e-6)
+    assert np.isclose(y_solution, target_value, atol=1e-6), f"Binary search did not find a solution close enough to target: y_solution={y_solution} vs target={target_value}"
 
     return x_solution
 
 
-def k_from_logical_value(m:int, logical_value:int) -> int:
+def k_from_logical_value(m:int, logical_value:LogicalValue) -> int:
     assertions.even(m)
 
-    if logical_value == 0:
+    if logical_value == '+':
+        # Special case: superposition |+> = 1/sqrt(2)(|0> + |1>)
+        # This is handled at a higher level, not here
+        raise ValueError("k_from_logical_value does not support logical_value='+' (superposition). Use get_mean_photon_number directly.")
+    elif logical_value == 0:
         k = 0
     elif logical_value == 1:
         k = m // 2
     else:
-        raise ValueError("L must be 0 or 1.")
+        raise ValueError("logical_value must be 0 (|0> state), 1 (|1> state), or '+' (|+> superposition state).")
     
     return k
 
@@ -253,9 +272,15 @@ def _numerical_exact_summation_mean_photon_number_for_cat_codeword(m:int, alpha:
 
     # Strip tiny imaginary component and return float
     imag_part = np.imag(result)
-    if not np.isclose(imag_part, 0.0, atol=1e-10):
-        # If the imaginary part is unexpectedly large, surface an informative error
-        raise AssertionError(f"Mean photon number has non-negligible imaginary part: {imag_part}")
+    real_part = np.real(result)
+    relative_imag_part = abs(imag_part) / max(abs(real_part), 1e-15)
+    if relative_imag_part > 1e-8:
+        # If the imaginary part is unexpectedly large relative to the real part,
+        # surface an informative error.
+        raise FloatingPointError(
+            f"Mean photon number has non-negligible imaginary part: imag={imag_part}, "
+            f"real={real_part}, relative={relative_imag_part}"
+        )
 
     return float(np.real(result))
 
@@ -301,6 +326,11 @@ def _numerical_exact_summation_mean_photon_number_for_squeezed_codeword(m:int, r
         denominator += a_kl
 
 
+        if abs(denominator) < 1e-300:
+            raise ZeroDivisionError(
+                f"Degenerate ratio in squeezed mean-photon summation: denominator~0 (m={m}, r={r}, k={k}, l={l})."
+            )
+
         result = numerator / denominator
 
         diff = abs(result - last_result)
@@ -321,7 +351,13 @@ def _numerical_exact_summation_mean_photon_number_for_squeezed_codeword(m:int, r
 
     return result
 
-def mean_photon_number_for_cat_codeword(m:int, alpha:float, logical_value:int, analytic_substitution:bool=True) -> float:
+def mean_photon_number_for_cat_codeword(m:int, alpha:float, logical_value:LogicalValue, analytic_substitution:bool=True) -> float:
+    # Handle superposition state |+> = 1/sqrt(2)(|0> + |1>)
+    if logical_value == '+':
+        mean_photon_0 = mean_photon_number_for_cat_codeword(m, alpha, 0, analytic_substitution=analytic_substitution)
+        mean_photon_1 = mean_photon_number_for_cat_codeword(m, alpha, 1, analytic_substitution=analytic_substitution)
+        return 0.5 * mean_photon_0 + 0.5 * mean_photon_1
+    
     k = k_from_logical_value(m, logical_value)
 
     if analytic_substitution:
@@ -334,7 +370,13 @@ def mean_photon_number_for_cat_codeword(m:int, alpha:float, logical_value:int, a
     return float(numerical_value)
 
 
-def mean_photon_number_for_squeezed_codeword(m:int, r:float, logical_value:int, analytic_substitution:bool=True, L_cut_off:int=DEFAULT_L_CUT_OFF, _k:int|None=None) -> float:
+def mean_photon_number_for_squeezed_codeword(m:int, r:float, logical_value:LogicalValue, analytic_substitution:bool=True, L_cut_off:int=DEFAULT_L_CUT_OFF, _k:int|None=None) -> float:
+    ## Handle superposition state |+> = 1/sqrt(2)(|0> + |1>)
+    if logical_value == '+' and _k is None:
+        mean_photon_0 = mean_photon_number_for_squeezed_codeword(m, r, 0, analytic_substitution=analytic_substitution, L_cut_off=L_cut_off)
+        mean_photon_1 = mean_photon_number_for_squeezed_codeword(m, r, 1, analytic_substitution=analytic_substitution, L_cut_off=L_cut_off)
+        return 0.5 * mean_photon_0 + 0.5 * mean_photon_1
+    
     ## Ignore logical value and use k if provided:
     if _k is not None:
         k = _k
@@ -350,29 +392,82 @@ def mean_photon_number_for_squeezed_codeword(m:int, r:float, logical_value:int, 
         return _numerical_exact_summation_mean_photon_number_for_squeezed_codeword(m, r, k, L_cut_off)
 
 
-def mean_photon_number_for_binomial_codeword(m:int, r:float, logical_value:int, analytic_substitution:bool=True, _k:int|None=None) -> float:
+def mean_photon_number_for_binomial_codeword(m:int, r:float, logical_value:LogicalValue, analytic_substitution:bool=True, _k:int|None=None, cut_off:int = DEFAULT_L_CUT_OFF) -> float:
+    ## Handle superposition state |+> = 1/sqrt(2)(|0> + |1>)
+    if logical_value == '+':
+        if not analytic_substitution:
+            from src.codes_built_in_superposition import binomial_code_state
+            state_0 = binomial_code_state(m, s=r, num_moments=cut_off, qubit_logical_value=0, _prog_bar=False)
+            state_1 = binomial_code_state(m, s=r, num_moments=cut_off, qubit_logical_value=1, _prog_bar=False)
+            state_plus = (state_0 + state_1).unit()
+            return qutip_mean_photon_number(state_plus)
+
+        mean_photon_0 = mean_photon_number_for_binomial_codeword(m, r, 0, analytic_substitution=analytic_substitution)
+        mean_photon_1 = mean_photon_number_for_binomial_codeword(m, r, 1, analytic_substitution=analytic_substitution)
+        return 0.5 * mean_photon_0 + 0.5 * mean_photon_1
+    
     ## Ignore logical value and use k if provided:
     if _k is not None:
         raise NotImplementedError("Binomial code mean photon number not implemented for k input.")
     
-    # Ignore analytic substitution == False:
-    analytic_substitution = True
+    if not analytic_substitution:
+        from src.codes_built_in_superposition import binomial_code_state
+        state = binomial_code_state(m, s=r, num_moments=cut_off, qubit_logical_value=logical_value, _prog_bar=False)
+        return qutip_mean_photon_number(state)
+
     analytical_expression = _analytic_mean_photon_number_for_binomial_k_state(m, logical_value)
     numerical_value = analytical_expression.subs({r_symbol:r}).evalf().doit()
     return float(numerical_value)
 
 
-def mean_photon_number_for_gkp_codeword(m:int, nbar:float, logical_value:int, analytic_substitution:bool=False) -> float:
-    return nbar  # currently, the input for the gkp code is the single-parameter n-bar
+def mean_photon_number_for_gkp_codeword(m:int, nbar:float, logical_value:LogicalValue, analytic_substitution:bool=False, cut_off:int = DEFAULT_L_CUT_OFF) -> float:
+    from src.codes_built_in_superposition import gkp_code_state
+    
+    # Handle superposition state |+> = 1/sqrt(2)(|0> + |1>)
+    if logical_value == '+':
+        if analytic_substitution:
+            return nbar
+
+        # Superposition state has quantum interference effects.
+        # Construct actual state and compute
+        state_0 = gkp_code_state(nbar, cut_off, qubit_logical_value=0, _prog_bar=False)
+        state_1 = gkp_code_state(nbar, cut_off, qubit_logical_value=1, _prog_bar=False)
+        state_plus = (state_0 + state_1).unit()
+        return qutip_mean_photon_number(state_plus)
+
+    if analytic_substitution:
+        return nbar
+        
+    state = gkp_code_state(nbar=nbar, num_moments=cut_off, qubit_logical_value=logical_value, _prog_bar=False)
+    return qutip_mean_photon_number(state)
+
 
 
 @cache(ram=True, disk=True)
 def find_parameter_for_target_mean_photon_number(
     code_type:_CodeTypes,
     m:int,
-    logical_value:int,
+    logical_value:LogicalValue,
     target_mean_photon_number:float,
 ) -> float:
+    
+    # Special cases are codes for which the result is simple:
+    if code_type == 'binomial':
+        return 2.0 * target_mean_photon_number / m
+    elif code_type == 'gkp':
+        return target_mean_photon_number
+
+    ## Otherwise, we need to solve the equation mean_photon_number_func(param) = target_mean_photon_number 
+    # for param, where mean_photon_number_func is derived from the analytic expression for the mean photon 
+    # number of the code.
+    nbar_threshold = LOWER_THRESHOLD_FOR_1_LOGICAL_STATE_PER_CODE[code_type](m)
+    if logical_value in {'+', 1} and target_mean_photon_number < nbar_threshold:
+        if logical_value == 1:
+            raise ValueError(f"Target mean photon number {target_mean_photon_number} is below the minimum threshold {nbar_threshold} for logical value 1 in code type {code_type} with m={m}.")
+        
+        elif logical_value == '+':
+            #TODO this is just a band-aid:
+            logical_value = 0
 
     mean_photon_number_func = get_single_input_function_from_symbolic_expression(
         code_type=code_type,
@@ -389,7 +484,7 @@ def find_parameter_for_target_mean_photon_number(
 def get_single_input_function_from_symbolic_expression(
     code_type:_CodeTypes,        
     m:int,
-    logical_value:int
+    logical_value:LogicalValue
 ) -> Callable[[float], float]:
 
 
@@ -408,20 +503,42 @@ def get_single_input_function_from_symbolic_expression(
 def get_mean_photon_number(
     code_type:_CodeTypes,        
     m:int,
-    logical_value:int,
+    logical_value:LogicalValue,
     parameter:float,
     analytic_substitution:bool=True,
     cut_off:int = DEFAULT_L_CUT_OFF 
 ) -> float:
+    
+    ## Handle superposition state |+> = 1/sqrt(2)(|0> + |1>)
+    if logical_value == '+':
+        mean_photon_0 = get_mean_photon_number(
+            code_type=code_type,
+            m=m,
+            logical_value=0,
+            parameter=parameter,
+            analytic_substitution=analytic_substitution,
+            cut_off=cut_off
+        )
+        mean_photon_1 = get_mean_photon_number(
+            code_type=code_type,
+            m=m,
+            logical_value=1,
+            parameter=parameter,
+            analytic_substitution=analytic_substitution,
+            cut_off=cut_off
+        )
+        # Average for superposition state
+        return 0.5 * mean_photon_0 + 0.5 * mean_photon_1
+    
     match code_type:
         case 'cat':
             return mean_photon_number_for_cat_codeword(m, parameter, logical_value, analytic_substitution=analytic_substitution)
         case 'squeeze':
             return mean_photon_number_for_squeezed_codeword(m, parameter, logical_value, analytic_substitution=analytic_substitution, L_cut_off=cut_off)
         case "binomial":
-            return mean_photon_number_for_binomial_codeword(m, parameter, logical_value, analytic_substitution=analytic_substitution)
+            return mean_photon_number_for_binomial_codeword(m, parameter, logical_value, analytic_substitution=analytic_substitution, cut_off=cut_off)
         case "gkp":
-            return mean_photon_number_for_gkp_codeword(m, parameter, logical_value, analytic_substitution=analytic_substitution)
+            return mean_photon_number_for_gkp_codeword(m, parameter, logical_value, analytic_substitution=analytic_substitution, cut_off=cut_off)
         case _:
             raise ValueError(f"Unknown code type: {code_type!r}")
 
@@ -677,20 +794,17 @@ def _test5_get_parameter_for_given_mean_photons(
 
 def _test6_plot_mean_photons_params_for_different_codes(
     m:int = 2,
-    logical_value:int = 0,
-    target_mean_photon_numbers:list[float] = np.linspace(0.01, 5.01, 21).tolist()
+    logical_value:int|Literal['+'] = "+",
+    target_mean_photon_numbers:list[float] = np.linspace(1.1, 5.01, 21).tolist()
 ) -> None:
     
     from matplotlib import pyplot as plt    
 
-    cat = []
-    squeeze = []
-    binomial = []
-
     lists = dict(
-        cat=cat,
-        squeeze=squeeze,
-        binomial=binomial
+        cat=[],
+        squeeze=[],
+        binomial=[],
+        gkp=[]
     )
 
     for target_mean_photon_number in ProgressBar(target_mean_photon_numbers, prefix="per target mean photons: "):
@@ -708,8 +822,27 @@ def _test6_plot_mean_photons_params_for_different_codes(
     ## Plot:
     linewidth = 3.0
     plt.figure(figsize=(10, 6))
-    for code_type, params in lists.items():
-        plt.plot(target_mean_photon_numbers, params, label=code_type, linewidth=linewidth)
+    plot_order = ['cat', 'squeeze', 'gkp', 'binomial']
+    for code_type in plot_order:
+        params = lists[code_type]
+        linestyle = '--' if code_type in ['cat', 'gkp'] else ':'
+
+        # For m=2, binomial and gkp are effectively identical; draw binomial on top
+        # with markers so both traces remain visible.
+        marker = 'o' if code_type == 'binomial' else None
+        zorder = 5 if code_type == 'binomial' else 3
+        plt.plot(
+            target_mean_photon_numbers,
+            params,
+            label=code_type,
+            linewidth=linewidth,
+            linestyle=linestyle,
+            marker=marker,
+            markersize=4,
+            markevery=2,
+            zorder=zorder,
+        )
+        
     plt.xlabel("Target Mean Photon Number")
     plt.ylabel("Parameter")
     plt.title("Mean Photon Number Parameters for Different Codes")
@@ -768,6 +901,142 @@ def _test7_test_binomial_code(
     plt.pause(0.1)
     print("Done.")
 
+
+def _get_logical_qutip_state(
+    m_for_code: int,
+    parameter: float,
+    num_moments: int,
+    code_type: _CodeTypes,
+    logical_value: LogicalValue
+):
+    if logical_value == '+':
+        state_0 = simple_m_legged_state(
+            m_for_code,
+            parameter,
+            num_moments=num_moments,
+            code_type=code_type,
+            qubit_logical_value=0,
+            num_qudit_values=2,
+        )
+        state_1 = simple_m_legged_state(
+            m_for_code,
+            parameter,
+            num_moments=num_moments,
+            code_type=code_type,
+            qubit_logical_value=1,
+            num_qudit_values=2,
+        )
+        qutip_state = (state_0 + state_1).unit()
+    else:
+        qutip_state = simple_m_legged_state(
+            m_for_code,
+            parameter,
+            num_moments=num_moments,
+            code_type=code_type,
+            qubit_logical_value=logical_value,
+            num_qudit_values=2,
+        )
+
+    return qutip_state
+
+
+
+def _test8_parameter_solver_error_vs_qutip_mean(
+    m: int = 2,
+    logical_value: LogicalValue = 0,
+    target_mean_photon_numbers: list[float] = np.linspace(0.1, 5.1, 21).tolist(),
+    num_moments: int = 100,
+    code_types: list[_CodeTypes] = ['cat', 'squeeze', 'binomial', 'gkp'] #type: ignore
+) -> None:
+    """For each code family, solve parameter-from-target and compare to Qutip mean photons.
+
+    Plots signed error: (Qutip mean photons) - (target mean photons).
+    """
+    from matplotlib import pyplot as plt
+
+    points_per_code: dict[_CodeTypes, list[tuple[float, float]]] = {
+        code_type: [] for code_type in code_types
+    }
+
+    
+    for target_mean_photon_number in ProgressBar(target_mean_photon_numbers, prefix="per nbar:"):
+        ProgressBar.newest().append_extra_str(f"nbar={target_mean_photon_number:.3f}")
+
+        for code_type in ProgressBar(code_types, prefix="per code:"):
+            ProgressBar.newest().append_extra_str(f"{code_type!r}")
+
+
+            m_for_code = 1 if code_type == 'gkp' else m
+
+            if logical_value in ["+", 1]:
+                # Check if target mean photon number is above the minimum threshold for this code; 
+                min_target_for_code = LOWER_THRESHOLD_FOR_1_LOGICAL_STATE_PER_CODE[code_type](m_for_code)
+                if target_mean_photon_number < min_target_for_code:
+                    continue
+
+            parameter = find_parameter_for_target_mean_photon_number(
+                code_type=code_type,
+                m=m_for_code,
+                logical_value=logical_value,
+                target_mean_photon_number=target_mean_photon_number,
+            )
+
+            qutip_state = _get_logical_qutip_state(
+                m_for_code,
+                parameter,
+                num_moments,
+                code_type,
+                logical_value
+            )
+
+            qutip_mean_photons = qutip_mean_photon_number(qutip_state)
+            signed_error = qutip_mean_photons - target_mean_photon_number
+            points_per_code[code_type].append((target_mean_photon_number, signed_error))
+
+    plt.figure(figsize=(10, 6))
+    line_styles = {
+        'cat': '-',
+        'squeeze': '--',
+        'binomial': '-.',
+        'gkp': ':',
+    }
+    markers = {
+        'cat': 'o',
+        'squeeze': 'o',
+        'binomial': 'o',
+        'gkp': 'o',
+    }
+
+    for code_type in code_types:
+        if len(points_per_code[code_type]) == 0:
+            continue
+        x_values, y_values = zip(*points_per_code[code_type])
+        plt.plot(
+            x_values,
+            y_values,
+            label=f"{code_type}",
+            linestyle=line_styles[code_type],
+            marker=markers[code_type],
+            markersize=4,
+            linewidth=2.0,
+            markevery=2,
+        )
+
+    title_str = f"Parameter Solver Error vs Qutip Mean Photon Number"+\
+        f"\nfor state |{logical_value}⟩ and m={m}"
+    if "gkp" in code_types:
+        title_str += " (except GKP)"
+
+    plt.axhline(0.0, color='black', linestyle=':', linewidth=1.2, alpha=0.8)
+    plt.xlabel("Target Mean Photon Number")
+    plt.ylabel("Qutip Mean - Target Mean")
+    plt.title(title_str)
+    plt.legend()
+    plt.grid(True, alpha=0.35)
+    plt.show()
+
+    print("Done.")
+
     
 
 if __name__ == "__main__":
@@ -777,7 +1046,8 @@ if __name__ == "__main__":
     # _test4_cat_state()
     # _test5_get_parameter_for_given_mean_photons()
     # _test6_plot_mean_photons_params_for_different_codes()
-    _test7_test_binomial_code()
+    # _test7_test_binomial_code()
+    _test8_parameter_solver_error_vs_qutip_mean()
 
     print("Done.")
 

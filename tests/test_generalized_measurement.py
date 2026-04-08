@@ -2,9 +2,12 @@
 Test script for the generalized qubit measurement function.
 """
 
-import sys
-from pathlib import Path
-sys.path.append(str(Path(__file__).parents[3]))
+# Use project-standard path setup
+try:
+    from tests._bootstrap import add_root_to_path
+except ModuleNotFoundError:
+    from _bootstrap import add_root_to_path
+add_root_to_path()
 
 from qutip import basis, tensor, qeye
 import numpy as np

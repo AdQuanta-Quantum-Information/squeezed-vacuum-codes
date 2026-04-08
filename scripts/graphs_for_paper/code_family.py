@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Literal
 
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
@@ -35,11 +36,10 @@ plt.rcParams.update({
     "font.serif": ["Computer Modern Roman"],
 })
 
-FONT_DICT = {
-    "family": "serif",
-    "size": 20,
-    "weight": "normal"
-}
+FONT_FAMILY: str = "serif"
+FONT_SIZE: int = 20
+FONT_WEIGHT: str = "normal"
+TICK_LABEL_SIZE: int = 20
 
 
 
@@ -48,7 +48,7 @@ def plot_family(
     max_m:int = 8,
     strength:float = 1.5,  
     fig_size = (12, 6),
-    high_resolution:bool = False,
+    resolution: Literal["low", "mid", "high"] = "mid",
     with_colorbar:bool = False,
     print_states:bool = True,
 ):
@@ -64,13 +64,23 @@ def plot_family(
     m_vals = list(range(2, max_m+1, 2))
     m_num = len(m_vals)
 
-    if high_resolution:
-        num_moments:int = 500
-        dpi:int = 800
-    else:
-        num_moments:int = 100
-        dpi:int = 100
+    resolution_settings: dict[str, tuple[int, int]] = {
+        "low": (100, 100),
+        "mid": (400, 300),
+        "high": (500, 800),
+    }
+    try:
+        num_moments, dpi = resolution_settings[resolution]
+    except KeyError as exc:
+        raise ValueError("resolution must be one of: 'low', 'mid', 'high'") from exc
 
+    label_scale: float = 0.8 if resolution in ("low", "mid") else 1.0
+    axis_label_font_dict = {
+        "family": FONT_FAMILY,
+        "size": int(FONT_SIZE),
+        "weight": FONT_WEIGHT,
+    }
+    title_font_size: int = int(30 * label_scale)
     ## Prepare the figure and the grid:
     fig, axes = plt.subplots(nrows=2, ncols=m_num, figsize=fig_size, dpi=dpi)
 
@@ -97,20 +107,22 @@ def plot_family(
             # Make the grid slightly transparent
             ax.grid(True, alpha=0.5)
             # Make ticks point inward
-            ax.tick_params(direction='in')
+            ax.tick_params(direction='in', labelsize=TICK_LABEL_SIZE)
 
             if i == 0:
                 # Set y-ticks only on the left column      
-                font_dict = FONT_DICT          
-                font_dict['size'] = 30
-                font_dict['weight'] = 'bold'
-                ax.set_title(r"$\mathbf{%s}$\textbf{-legs}"%(m), **font_dict)
+                ax.set_title(
+                    r"$\mathbf{%s}$\textbf{-legs}"%(m),
+                    fontsize=title_font_size,
+                    fontweight="bold",
+                    fontfamily=FONT_FAMILY,
+                )
                 ax.set_xticklabels([])
                 ax.set_xlabel("")
 
             elif i ==1:
                 xlabel_str = r"Re$(\alpha)$"
-                ax.set_xlabel(xlabel_str, fontdict=FONT_DICT)
+                ax.set_xlabel(xlabel_str, fontdict=axis_label_font_dict)
 
             else:
                 raise ValueError("This should never happen.")
@@ -120,7 +132,7 @@ def plot_family(
             if j == 0:
                 # ax.set_ylabel(f"|{i}⟩", fontsize=LABEL_FONT_SIZE)
                 ylabel_str = r"Im$(\alpha)$"
-                ax.set_ylabel(ylabel_str, fontdict=FONT_DICT)
+                ax.set_ylabel(ylabel_str, fontdict=axis_label_font_dict)
             else:
                 ax.set_yticklabels([])
                 ax.set_ylabel("")
@@ -128,7 +140,7 @@ def plot_family(
     fig.tight_layout(pad=0.1)
 
     print("Saving figure...")
-    save_figure(fig, file_name="Code States Grid", extensions=["png", "pdf"], dpi=dpi)
+    save_figure(fig, file_name="Code States Grid", extensions=["png", "pdf", "svg"], dpi=dpi)
     print("All done!")
 
 
@@ -142,6 +154,7 @@ def plot_colorbar():
     ## Edit the colorbar:
     cb = d["cb"]
     cb.set_ticks([-0.1, -0.05, 0, 0.05, 0.10, 0.15, 0.20])
+    cb.ax.tick_params(labelsize=TICK_LABEL_SIZE)
 
 
     save_figure(d['fig'], file_name="Colorbar", extensions=["png", "pdf", "svg"], dpi=800)
@@ -150,4 +163,4 @@ def plot_colorbar():
 
 if __name__ == "__main__":
     plot_family()
-    plot_colorbar()
+    # plot_colorbar()

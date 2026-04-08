@@ -301,7 +301,6 @@ class SqueezingCode:
 
 	def logical_dual_states(self) -> tuple[Qobj, Qobj]:
 		logic_0, logic_1 = self.logical_states()
-		#TODO Use logical-H gate
 		logic_p = (logic_0 + logic_1) / sqrt_2
 		logic_m = (logic_0 - logic_1) / sqrt_2
 		assert np.isclose(logic_p.overlap(logic_m), 0, atol=1e-6), "Logical states are not orthogonal."

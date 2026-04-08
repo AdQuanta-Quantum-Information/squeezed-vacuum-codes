@@ -18,7 +18,7 @@ if __name__ == "__main__":
     from __init__ import add_root_to_path
     path = add_root_to_path()
 
-from src.utils.visuals.matplotlib_support import save_figure, draw_now
+from src.utils.visuals.matplotlib_support import save_figure, draw_now, add_magnification_glass_inset, PlotBoxBounds
 from src.utils.visuals.colors import color_shades, _RgbFloatTuple
 from src.utils.prints import ProgressBar
 from src.utils.strings import format_float_for_as_str
@@ -29,6 +29,7 @@ from src.cost_functions import compute_cost_on_logical_codewords
 from src.cost_functions import MeasurementTypeLiteral, NoiseOptionLiteral, BosonicNoiseType, CostPerNoiseDict, CostPerLegsPerNoiseDict, CostPerLogicalBasis, LogicalBasisName, _SpecificBasisOptionType
 
 from globals import Globals
+
 from _visual_helper import (
     _NumMomentsFuncType,
     latex_toggled_str as _latex_toggled_str,
@@ -297,10 +298,88 @@ def _get_text_pos(
     return x, y
 
 
-# _extend_axis_without_grid  →  imported from _visual_helper
+def _end_of_lines(
+    axis: Literal["x", "y"],
+    ax: Axes,
+    padding_factor: float = 0.0,
+    padding_constant: float = 0.1
+) -> float:
+    """Calculate the end of all lines in the given axis, with some padding."""
+    all_lines = ax.get_lines()
+    # Get the maximum x and y values across all lines
+    match axis:
+        case "x": _get_data = lambda line: line.get_xdata()
+        case "y": _get_data = lambda line: line.get_ydata()
+        case _: raise ValueError(f"Unknown axis: {axis!r}. Use 'x' or 'y'.")
+
+    max_point = max((_get_data(line).max() for line in all_lines), default=0)   
+    return float(max_point * (1 + padding_factor) + padding_constant)
 
 
-# _adjust_label_positions_to_avoid_overlap  →  imported from _visual_helper
+def _override_inset_xticks(inset_ax: Axes) -> None:
+    """Set cleaner inset x-ticks with two-decimal labels.
+
+    Prefer the canonical numerics1 ticks and keep only values inside the
+    current inset x-limits. If none fit, fall back to a rounded 0.02 grid.
+    """
+    x_min, x_max = sorted(inset_ax.get_xlim())
+
+    preferred_ticks = np.array([0.03, 0.05, 0.07, 0.10], dtype=float)
+    ticks = preferred_ticks[(preferred_ticks >= x_min) & (preferred_ticks <= x_max)]
+
+    if ticks.size == 0:
+        step = 0.02
+        start = np.ceil(x_min / step) * step
+        end = np.floor(x_max / step) * step
+        ticks = np.arange(start, end + 0.5 * step, step)
+
+    if ticks.size > 0:
+        inset_ax.set_xticks(ticks)
+        inset_ax.set_xticklabels([f"{x:.2f}" for x in ticks])
+
+
+def _add_magnification_glass(
+    ax: Axes,
+    noise_type: BosonicNoiseType,
+) -> Axes | None:
+    """Apply numerics1 fixed magnification-glass bounds.
+
+    Bounds are explicit by design: no interpolation and no axis-derived windows.
+    """
+
+    if noise_type == "loss":
+        magnified_bounds = PlotBoxBounds(
+            x0=0.030, x1=_end_of_lines("x", ax, padding_constant=0.01), 
+            y0=0.005, y1=_end_of_lines("y", ax, padding_constant=0.6)
+        )
+    else:
+        magnified_bounds = PlotBoxBounds(
+            x0=2.5e-2, x1=_end_of_lines("x", ax, padding_constant=0.01), 
+            y0=0.3,    y1=_end_of_lines("y", ax, padding_constant=1.5)
+        )
+    inset_bounds = PlotBoxBounds(x0=0.57, y0=0.07, width=0.40, height=0.40)
+
+
+    ax_out = add_magnification_glass_inset(
+        ax=ax,
+        magnified_data_bounds=magnified_bounds,
+        inset_axes_bounds=inset_bounds,
+        inset_axes_bounds_units='axes-window-fraction',
+        use_readable_ticks=True,
+        readable_tick_count=3,
+        border_color="gray",
+        border_linewidth=1.8,
+        connector_linewidth=1.8,
+        connector_loc1=2,
+        connector_loc2=4,
+        hide_inset_ticks=False,
+        inset_tick_fontsize=9,
+    )
+
+    if ax_out is not None:
+        _override_inset_xticks(ax_out)
+
+    return ax_out
 
 
 def _add_unified_legend_for_both_axes(
@@ -590,6 +669,7 @@ def _plot_results(
     _adjust_ticks_font:bool = True,
     x_scale: Literal['linear', 'log'] = 'log',
     figure_title: str = "",
+    enable_magnification_glass: bool = False,
 ):
     """ Plot the results from compute_cost_on_logical_codewords(). """
 
@@ -729,7 +809,7 @@ def _plot_results(
                     ax, label_data, 
                     min_y_distance_factor=1.5,
                     x_scale=x_scale,
-                    y_scale=y_scale
+                    y_scale=type_cast(Literal["linear", "log"], ax.get_yscale())
                 )
                 
                 # Add labels with adjusted positions
@@ -750,6 +830,10 @@ def _plot_results(
         )
     else:
         raise ValueError(f"Unknown label_style: {label_style!r}")
+
+    if enable_magnification_glass:
+        _add_magnification_glass(axes["loss"], noise_type="loss")
+        _add_magnification_glass(axes["dephasing"], noise_type="dephasing")
 
     if figure_title != "":
         fig.suptitle(figure_title, fontsize=text_font_size)
@@ -774,7 +858,7 @@ def _plot_results(
 
     file_name = ""\
         + figure_name_prefix \
-        + measurement  \
+        + " "+measurement  \
         + f" - {noise_method}" \
         + (f" - N={N}" if isinstance(N, (int,float)) else "") \
         + (f" - {figure_name_extra}" if figure_name_extra else "") \
@@ -787,28 +871,42 @@ def _plot_results(
     return fig, axes, legend
 
 
+
+loss_basis: LogicalBasisName = "main"
+dephasing_basis: LogicalBasisName = "dual"
+
+
+
+def _num_moments_per_gamma(gamma:float) -> int:
+    """Determine number of moments based on gamma."""
+    if gamma <= 1e-2:
+        return 200
+    else:
+        return 300
+
 def plot_full_codewords_numeric_figure_x_is_gamma(
-    num_moments : int = 100,
-    num_gammas:int = 5,
+    num_moments : int|Callable[[float], int] = _num_moments_per_gamma, # _num_moments_per_gamma,
     num_code_states:int = 3,
-    with_gkp:bool = True,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00"
     noise_method : NoiseOptionLiteral = "kraus-KL-style",  # "simulated", "kraus-KL-style", "kraus-channel"
-    mean_photon_number : float = 2.0
+    mean_photon_number : float = 3.0,
+    enable_magnification_glass: bool = True
 ) -> None:
 
     ## ========= Inputs =========:
     x_vec_name = "γ"
-    γ_vec = np.logspace(-7, -3, num_gammas).tolist()
-    if with_gkp:
-        codes = ["squeeze", "cat", "binomial", "gkp"]
-    else:
-        codes = ["squeeze", "cat", "binomial"]
+    γ_vec = np.logspace(-7, -3, 5).tolist()
+    γ_vec += np.logspace(-3, -1, 3).tolist()[1:]
+    γ_vec += np.logspace(-1, +0, 6).tolist()[1:-1]
+    # γ_vec += np.logspace(-3, -1, 6).tolist()[1:]
+    # γ_vec += np.logspace(-1, +0, 12).tolist()[1:-1]
+    γ_vec = [γ for γ in γ_vec if γ <= 0.1]
+
 
     ## ========= Compute =========:
     per_code_results : dict[_CodeTypes, CostPerLegsPerNoiseDict] = dict()
 
-    for code in ProgressBar(codes, prefix="different code  "):
+    for code in ProgressBar(["squeeze", "cat", "binomial", "gkp"], prefix="different code  "):
         ProgressBar.newest().append_extra_str(f"{code!r}")
         code = type_cast(_CodeTypes, code)
 
@@ -824,46 +922,51 @@ def plot_full_codewords_numeric_figure_x_is_gamma(
             num_code_states=num_code_states,
             code=code,
             measurement=measurement,
-            noise_method=noise_method
+            noise_method=noise_method,
+            specific_bases=_SpecificBasisOptionType(loss=loss_basis, dephasing=dephasing_basis)
         )
         per_code_results[code] = results 
 
     ## ========= Plot =========:
-    fig, axes, legend = _plot_results(
-        per_code_results, 
-        x_vec_name=x_vec_name,
-        x_vec=γ_vec,
-        measurement=measurement,
-        noise_method=noise_method,
-        figure_name_prefix="x-is-gamma",
-        figure_name_extra=f"n-bar={mean_photon_number}",
-        N=num_moments,
-        loss_basis="main",
-        dephasing_basis="dual"
-    )
+    for vertical_plots in [False, True]:
+        fig, axes, legend = _plot_results(
+            per_code_results, 
+            x_vec_name=x_vec_name,
+            x_vec=γ_vec,
+            measurement=measurement,
+            noise_method=noise_method,
+            figure_name_prefix="x-is-gamma",
+            figure_name_extra=f"n-bar={mean_photon_number}",
+            N=num_moments,
+            loss_basis=loss_basis,
+            dephasing_basis=dephasing_basis,
+            enable_magnification_glass=enable_magnification_glass,
+            vertical_plots=vertical_plots,
+            _connected_plots=vertical_plots
+        )
 
     ## Wait for user to close:
     draw_now()
-    # input("Press Enter to close the plots and end the program...")
+    input("Press Enter to close the plots and end the program...")
+    print("Done.")
 
 
 def _num_moments_func(mean_n: float) -> int:
     """Determine number of moments based on mean photon number."""
     n = 50*int(np.ceil(mean_n))
-    n = max(n, 50)  # enforce a minimum of 50 moments for low photon numbers
-    n = min(n, 200) # enforce a maximum of 200 moments for high photon numbers to keep runtime reasonable
+    n = max(n, 100) # enforce a minimum of 100 moments for low photon numbers
+    n = min(n, 300) # enforce a maximum of 300 moments for high photon numbers to keep runtime reasonable
     return n
 
 
 def plot_full_codewords_numeric_figure_x_is_nbar(
     num_moments: int|_NumMomentsFuncType = _num_moments_func,
-    photon_num_vec = [float(n) for n in np.linspace(0.0, 5.0, 31)],
+    photon_num_vec = [float(n) for n in np.linspace(0.0, 5.0, 61)],
     num_code_states:int = 3,
     measurement: MeasurementTypeLiteral = "overlap01",  # "KL", "overlap01", "overlap00", "fidelity01", "fidelity00"
     noise_method : NoiseOptionLiteral = "kraus-KL-style",  # "simulated", "kraus" "kraus-channel"
-    loss_basis: LogicalBasisName = "main",
-    dephasing_basis: LogicalBasisName = "dual",
-    γ = 1e-2
+    γ = 1e-2,
+    enable_magnification_glass: bool = False,
 ) -> None:
     
     ## ========= Inputs =========:
@@ -902,27 +1005,31 @@ def plot_full_codewords_numeric_figure_x_is_nbar(
         per_code_results[code] = results 
 
     ## ========= Plot =========:
-    fig, axes, legend = _plot_results(
-        per_code_results, 
-        x_vec_name=x_vec_name,
-        x_vec=photon_num_vec,
-        measurement=measurement,
-        noise_method=noise_method,
-        loss_basis=loss_basis,
-        dephasing_basis=dephasing_basis,
-        figure_name_prefix="x-is-nbar",
-        figure_name_extra=f"γ={gamma_file_str}",
-        N=num_moments,
-        x_scale = 'linear',
-        # figure_title=f"Noise rate {γ_str} = {gamma_title_str}"
-    )
+    for vertical_plots in [False, True]:
+        fig, axes, legend = _plot_results(
+            per_code_results, 
+            x_vec_name=x_vec_name,
+            x_vec=photon_num_vec,
+            measurement=measurement,
+            noise_method=noise_method,
+            loss_basis=loss_basis,
+            dephasing_basis=dephasing_basis,
+            figure_name_prefix="x-is-nbar",
+            figure_name_extra=f"γ={gamma_file_str}",
+            N=num_moments,
+            x_scale = 'linear',
+            enable_magnification_glass=enable_magnification_glass,
+            vertical_plots=vertical_plots,
+            _connected_plots=vertical_plots
+        )
 
     draw_now()
-    # input("Press Enter to close the plots and end the program...")
+    input("Press Enter to close the plots and end the program...")
+    print(f"Done.")
 
 
 if __name__ == "__main__":
-    # plot_full_codewords_numeric_figure_x_is_gamma()
+    plot_full_codewords_numeric_figure_x_is_gamma()
     plot_full_codewords_numeric_figure_x_is_nbar()
     draw_now()
     input("Press Enter to close the plots and end the program...")

@@ -13,9 +13,12 @@ import functools
 import matplotlib.pyplot as plt
 
 
-if __name__ == "__main__":
-    from __init__ import add_root_to_path
-    add_root_to_path()
+try:
+    from scripts.study._bootstrap import add_root_to_path
+except ModuleNotFoundError:
+    from _bootstrap import add_root_to_path
+
+add_root_to_path()
 
 from src.analytical_expressions import analytical_code_word
 from src.codes_built_in_superposition import simple_m_legged_code

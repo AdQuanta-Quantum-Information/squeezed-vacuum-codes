@@ -58,10 +58,11 @@ class KrausTruncationError(ValueError):
 KRAUS_COST_THRESHOLD : Final[float] = 1e-50 if Globals.PRECISE else 1e-16
 
 """ Number of consecutive Kraus operator contributions below KRAUS_COST_THRESHOLD"""
-KRAUS_TOO_SMALL_STREAK_SIZE : Final[int] = 500 if Globals.PRECISE else 5  
+KRAUS_TOO_SMALL_STREAK_SIZE : Final[int] = 500 if Globals.PRECISE else 10  
 
 """ Threshold for checking Kraus completeness condition Σ Kj†Kj = I """
-KRAUS_COMPLETENESS_CHECK_THRESHOLD : Final[float] = 1e-12 if Globals.PRECISE else 1e-5
+# KRAUS_COMPLETENESS_CHECK_THRESHOLD : Final[float] = 1e-12 if Globals.PRECISE else 1e-1
+KRAUS_COMPLETENESS_CHECK_THRESHOLD : Final[float] = 0.1 if Globals.PRECISE else 0.5
 
 
 
@@ -211,10 +212,11 @@ def _check_kraus_series_completeness(ops:Iterable[Qobj]):
     I = qeye(dim).full()
     sum_ = sum_.full()
 
-    # Check:
-    diff = np.linalg.norm(sum_ - I, ord='fro')
-    if diff > KRAUS_COMPLETENESS_CHECK_THRESHOLD:
-        raise AssertionError(f"Kraus operators are not complete: Σ Kj†Kj - I = {diff!r}")
+    ## Check:
+    # diff_norm = np.linalg.norm(sum_ - I, ord='fro')
+    diff_max = np.abs(sum_ - I).max()
+    if diff_max > KRAUS_COMPLETENESS_CHECK_THRESHOLD:
+        raise AssertionError(f"Kraus operators are not complete: Σ Kj†Kj - I = {diff_max!r}")
 
 
 

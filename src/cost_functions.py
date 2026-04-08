@@ -79,6 +79,7 @@ class _SpecificBasisOptionType(TypedDict):
 ## Constants:
 PROG_BAR_SIGNIFICANT_DIGITS : Final[int] = 6
 NORMALIZE_LOGICAL_STATES_BEFORE_APPLYING_HADAMARD : Final[bool] = True
+TARGET_STATE_FOR_MEAN_NUMBER_CALCULATION : Final[Literal[0, 1, '+']] = 0
 
 
 def _cache_function():
@@ -176,6 +177,7 @@ def kraus_map_overlap_matrices(
     use_dual_code: bool = False,
 ) -> NDArray[np.object_]:  # a matrix of overlap matrices
 
+
     # Helper function wrapper already taking everything except j:
     def _kraus_j(j:int) -> Qobj:
         return kraus_operator_j(noise_type, N, γ, j)
@@ -200,12 +202,13 @@ def kraus_map_overlap_matrices(
 
     # init an `_num_kraus_ops×_num_kraus_ops` array filled with nans:
     overlap_matrices : NDArray[np.object_] = np.full((_num_kraus_ops, _num_kraus_ops), np.nan, dtype=object)
+    _values_inserted :bool = False
 
     for a in range(_num_kraus_ops):
-        ka = _kraus_j(a)
+        k_a = _kraus_j(a)
 
         for b in range(_num_kraus_ops):
-            kb = _kraus_j(b)
+            k_b = _kraus_j(b)
 
             prog_bar.next()
             too_small = False
@@ -213,7 +216,7 @@ def kraus_map_overlap_matrices(
             ## Actual overlap matrix computation:       <-----
             f = np.zeros((2,2), dtype=complex)
             for (i, ψi), (j, ψj) in itertools.product(enumerate([ψ0, ψ1]), repeat=2):
-                f[i, j] = f_ij_ab_kraus_overlap(ψi, ψj, ka, kb)
+                f[i, j] = f_ij_ab_kraus_overlap(ψi, ψj, k_a, k_b)
 
             ## When to stop results that are way too small:
             too_small_ = np.any(np.isnan(f)) or np.linalg.norm(f, ord='fro') < KRAUS_COST_THRESHOLD 
@@ -230,11 +233,13 @@ def kraus_map_overlap_matrices(
                 break
 
             overlap_matrices[a,b] = f
+            _values_inserted = True
+
             if a == b:
                 _highest_used_index = max(_highest_used_index, a)
 
 
-        if too_small and b <= 2*KRAUS_TOO_SMALL_STREAK_SIZE and a <= b  :  # meaning that also ka itself is too small
+        if too_small and b <= 2*KRAUS_TOO_SMALL_STREAK_SIZE and a <= b  :  # meaning that also k_a itself is too small
             if small_values_streak_a(True):
                 small_values_streak_a.reset()
                 break
@@ -254,6 +259,13 @@ def kraus_map_overlap_matrices(
             plt.xlabel("Kraus Operator Index")
             plt.ylabel("Kraus Operator Norm")
             draw_now()
+
+    
+    if overlap_matrices.size == 0: # check if the array is empty
+        raise ValueError("Overlap matrices array is empty! This should never happen. Check the kraus operators and the cost threshold.")
+    # Check if the input even had any inserted values (i.e. not all nans):
+    if not _values_inserted:
+        raise ValueError("All overlap matrices are NaN! This should never happen. Check the kraus operators and the cost threshold.")
 
     return overlap_matrices
 
@@ -332,6 +344,7 @@ def _compute_cost_given_m_r_and_noise(
     **kwargs
 ) -> float:
                
+
     match noise_method:
         case "kraus-KL-style":
             overlap_matrices = kraus_map_overlap_matrices(m, r, γ, num_moments, code_type, noise_type, use_dual_code)
@@ -394,7 +407,7 @@ def _get_parameters_from_fixed_and_x(
                 r = find_parameter_for_target_mean_photon_number(
                     code_type=code,
                     m=m,
-                    logical_value=0,
+                    logical_value=TARGET_STATE_FOR_MEAN_NUMBER_CALCULATION,
                     target_mean_photon_number=value
                 )
             case _:
