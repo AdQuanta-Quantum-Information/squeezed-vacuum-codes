@@ -14,8 +14,7 @@ from src.utils.inverse_lookup import MonotonicDirection, MonotonicInverseLookup
 def test_inverse_lookup_from_callable_increasing() -> None:
     lookup = MonotonicInverseLookup.from_function(
         lambda x: x * x,
-        delta_x=0.01,
-        x0=0.0,
+        x_points=np.arange(0.0, 2.01, 0.01),
         direction=MonotonicDirection.INCREASING,
     )
 
@@ -26,8 +25,7 @@ def test_inverse_lookup_from_callable_increasing() -> None:
 def test_inverse_lookup_from_callable_decreasing() -> None:
     lookup = MonotonicInverseLookup.from_function(
         lambda x: 9.0 - 3.0 * x,
-        delta_x=1.0,
-        x0=0.0,
+        x_points=np.arange(0.0, 4.0, 1.0),
         direction=MonotonicDirection.DECREASING,
     )
 
@@ -42,8 +40,7 @@ def test_inverse_lookup_out_of_range_without_clamp() -> None:
             return 2.0 * x
 
     lookup = IncreasingDoubleLookup(
-        delta_x=1.0,
-        x0=0.0,
+        x_points=[0.0, 1.0],
         direction=MonotonicDirection.INCREASING,
     )
 
@@ -59,10 +56,8 @@ def test_inverse_lookup_expands_until_bracket_found() -> None:
             return x
 
     lookup = IncreasingIdentityLookup(
-        delta_x=1.0,
-        x0=0.0,
+        x_points=[0.0, 1.0],
         direction=MonotonicDirection.INCREASING,
-        num_initial_points=2,
     )
 
     x = lookup.x_from_y(5.5, clamp=False)
