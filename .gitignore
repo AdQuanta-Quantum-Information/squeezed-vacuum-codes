@@ -190,7 +190,6 @@ cython_debug/
 
 # Private / editor agent configuration (not for public repo)
 .github/
-docs/gkp-review-figure7/
 
 # Ruff stuff:
 .ruff_cache/
