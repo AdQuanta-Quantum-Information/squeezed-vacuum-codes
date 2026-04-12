@@ -452,9 +452,7 @@ def find_parameter_for_target_mean_photon_number(
 ) -> float:
     
     # Special cases are codes for which the result is simple:
-    if code_type == 'binomial':
-        return 2.0 * target_mean_photon_number / m
-    elif code_type == 'gkp':
+    if code_type == 'gkp':
         return target_mean_photon_number
 
     ## Otherwise, we need to solve the equation mean_photon_number_func(param) = target_mean_photon_number 

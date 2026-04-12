@@ -26,7 +26,7 @@ def test_verification():
     print("TEST 1: VERIFICATION - Current behavior for |0> state (logical_value=0)")
     print("=" * 70)
     
-    target_mean_photons = 2.5
+    target_mean_photons = 5.0
     m = 2
     
     for code_type in ['cat', 'squeeze', 'binomial']:

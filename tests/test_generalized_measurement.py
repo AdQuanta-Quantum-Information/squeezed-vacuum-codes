@@ -12,7 +12,7 @@ add_root_to_path()
 from qutip import basis, tensor, qeye
 import numpy as np
 
-from projects.controlled_squeezing.src.squeezing_code import measure_qubit_state
+from src.measurements import measure_qubit_state
 
 def test_single_qubit_measurement():
     """Test measurement with 1 qubit (original case)."""
@@ -32,7 +32,7 @@ def test_single_qubit_measurement():
     
     print(f"Number of measurement outcomes: {len(results)}")
     for i, result in enumerate(results):
-        print(f"  Outcome {i}: qubit_measured={result['qubit_measured']}, prob={result['prob']:.3f}")
+        print(f"  Outcome {i}: qubits_value={result['qubits_value']}, prob={result['prob']:.3f}")
     
     assert len(results) == 2, f"Expected 2 outcomes, got {len(results)}"
     assert abs(results[0]['prob'] - 0.5) < 1e-6, f"Expected prob ~0.5, got {results[0]['prob']}"
@@ -58,7 +58,7 @@ def test_two_qubit_measurement():
     
     print(f"Number of measurement outcomes: {len(results)}")
     for i, result in enumerate(results):
-        print(f"  Outcome {i}: qubit_measured={result['qubit_measured']}, prob={result['prob']:.3f}")
+        print(f"  Outcome {i}: qubits_value={result['qubits_value']}, prob={result['prob']:.3f}")
     
     assert len(results) == 4, f"Expected 4 outcomes, got {len(results)}"
     for result in results:
@@ -83,12 +83,12 @@ def test_three_qubit_measurement():
     print(f"Number of measurement outcomes: {len(results)}")
     for i, result in enumerate(results):
         if result['prob'] > 1e-10:  # Only show non-zero probabilities
-            print(f"  Outcome {i}: qubit_measured={result['qubit_measured']}, prob={result['prob']:.3f}")
+            print(f"  Outcome {i}: qubits_value={result['qubits_value']}, prob={result['prob']:.3f}")
     
     # Should have only one outcome with probability 1
     non_zero_results = [r for r in results if r['prob'] > 1e-10]
     assert len(non_zero_results) == 1, f"Expected 1 non-zero outcome, got {len(non_zero_results)}"
-    assert non_zero_results[0]['qubit_measured'] == 0, f"Expected outcome 0 (|000⟩), got {non_zero_results[0]['qubit_measured']}"
+    assert non_zero_results[0]['qubits_value'] == 0, f"Expected outcome 0 (|000⟩), got {non_zero_results[0]['qubits_value']}"
     assert abs(non_zero_results[0]['prob'] - 1.0) < 1e-6, f"Expected prob ~1.0, got {non_zero_results[0]['prob']}"
     print("✓ 3-qubit test passed!")
 
