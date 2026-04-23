@@ -68,9 +68,38 @@ def _compute_wigner(state: qutip.Qobj, alpha_max: float) -> np.ndarray:
     return qutip.wigner(rho, xvec, xvec, method='clenshaw')
 
 
+def _build_colormap() -> tuple[LinearSegmentedColormap, TwoSlopeNorm]:
+    """Build plasma_dark colormap: cyan → BG → orange → yellow."""
+    bg = tuple(c / 255.0 for c in BG_COLOR_RGB)   # normalised RGB
+    cmap = LinearSegmentedColormap.from_list(
+        'plasma_dark',
+        ['#00e5ff', (*bg, 1.0), '#ff6600', '#ffe066'],
+        N=512,
+    )
+    norm = TwoSlopeNorm(vmin=COLORLIMS[0], vcenter=0.0, vmax=COLORLIMS[1])
+    return cmap, norm
+
+
+def _render_wigner_rgba(W: np.ndarray, cmap: LinearSegmentedColormap,
+                        norm: TwoSlopeNorm) -> Image.Image:
+    """
+    Render W → uint8 PIL RGBA image of size SLAB_SIZE×SLAB_SIZE.
+    Pipeline: ScalarMappable → RGBA float → uint8 PIL → bicubic upscale.
+    """
+    sm = matplotlib.cm.ScalarMappable(norm=norm, cmap=cmap)
+    rgba_f = sm.to_rgba(W)                            # shape (N, N, 4), float [0,1]
+    rgba_u8 = (rgba_f * 255).clip(0, 255).astype(np.uint8)
+    img = Image.fromarray(rgba_u8, mode='RGBA')
+    return img.resize((SLAB_SIZE, SLAB_SIZE), Image.BICUBIC)
+
+
 if __name__ == "__main__":
     states = _compute_states()
+    cmap, norm = _build_colormap()
     for m, (alpha_max, *_) in LAYOUT.items():
         W = _compute_wigner(states[m], alpha_max)
-        print(f"  m={m}: W shape={W.shape}, min={W.min():.3f}, max={W.max():.3f}")
-    print("Task 1 OK")
+        img = _render_wigner_rgba(W, cmap, norm)
+        out = OUTPUT_DIR / f"_slab_test_m{m}.png"
+        img.save(out)
+        print(f"  m={m}: saved {out}")
+    print("Task 2 OK")
