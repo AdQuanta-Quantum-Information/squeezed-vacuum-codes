@@ -93,13 +93,43 @@ def _render_wigner_rgba(W: np.ndarray, cmap: LinearSegmentedColormap,
     return img.resize((SLAB_SIZE, SLAB_SIZE), Image.BICUBIC)
 
 
+def _perspective_warp(img: Image.Image) -> Image.Image:
+    """
+    Apply PIL QUAD warp to simulate 3D tilt (slab viewed from ~30° above).
+    Returns RGBA image of same size with trapezoid slab, transparent outside.
+    Uses Image.QUAD: data=(x0,y0, x1,y1, x2,y2, x3,y3) are SOURCE coords
+    for (top-left, bottom-left, bottom-right, top-right) destination corners.
+    """
+    W, H = img.size    # both == SLAB_SIZE
+    tilt_top = int(0.18 * H)
+    pad      = int(0.10 * W)
+    # Source coords for each destination corner:
+    #   top-left     -> (pad,   tilt_top)
+    #   bottom-left  -> (0,     H-1)
+    #   bottom-right -> (W-1,   H-1)
+    #   top-right    -> (W-pad, tilt_top)
+    quad_data = (
+        pad,   tilt_top,   # top-left source
+        0,     H - 1,      # bottom-left source
+        W - 1, H - 1,      # bottom-right source
+        W-pad, tilt_top,   # top-right source
+    )
+    return img.transform((W, H), Image.QUAD, quad_data, resample=Image.BICUBIC)
+
+
+def _slab_to_float32(img: Image.Image) -> np.ndarray:
+    """Convert uint8 RGBA PIL Image to float32 numpy array [0, 1], shape (H, W, 4)."""
+    return np.array(img, dtype=np.float32) / 255.0
+
+
 if __name__ == "__main__":
     states = _compute_states()
     cmap, norm = _build_colormap()
     for m, (alpha_max, *_) in LAYOUT.items():
         W = _compute_wigner(states[m], alpha_max)
         img = _render_wigner_rgba(W, cmap, norm)
-        out = OUTPUT_DIR / f"_slab_test_m{m}.png"
-        img.save(out)
+        warped = _perspective_warp(img)
+        out = OUTPUT_DIR / f"_slab_warped_m{m}.png"
+        warped.save(out)
         print(f"  m={m}: saved {out}")
-    print("Task 2 OK")
+    print("Task 3 OK")
