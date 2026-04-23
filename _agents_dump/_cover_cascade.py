@@ -83,3 +83,75 @@ def compute_wigner(
     W = qutip.wigner(rho, xvec, xvec, method='clenshaw')
     X, Y = np.meshgrid(xvec, xvec)
     return X, Y, W
+
+
+def make_cover(num_points: int = NUM_POINTS, output_path: Path | None = None) -> None:
+    """Render the depth-cascade cover and save PNG/TIFF."""
+    if output_path is None:
+        output_path = OUTPUT_DIR / "cover_cascade_preview.png"
+
+    states = _compute_states()
+
+    # ── Wigner data ───────────────────────────────────────────────────────────
+    wigner_data: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+    for m, state in states.items():
+        alpha_max = SURFACE_PARAMS[m][0]
+        print(f"Computing Wigner m={m} ...")
+        wigner_data[m] = compute_wigner(state, alpha_max, num_points)
+
+    # ── Figure setup ──────────────────────────────────────────────────────────
+    fig = plt.figure(figsize=(8.5, 11), facecolor=BG_COLOR)
+    ax: Axes3D = fig.add_axes([0, 0, 1, 1], projection='3d')
+    ax.set_facecolor(BG_COLOR)
+    try:
+        ax.computed_zorder = False
+    except AttributeError:
+        pass  # older matplotlib — back-to-front order handles z-sorting
+
+    # Disable all axes decoration
+    ax.set_axis_off()
+    for axis3d in (ax.xaxis, ax.yaxis, ax.zaxis):
+        axis3d.pane.fill = False
+        axis3d.pane.set_edgecolor('none')
+        axis3d.line.set_color('none')
+    ax.grid(False)
+
+    ax.view_init(elev=28, azim=-55)
+
+    # ── Colormap / norm ───────────────────────────────────────────────────────
+    cmap = matplotlib.colormaps['bwr']
+    norm = TwoSlopeNorm(vmin=COLORLIMS[0], vcenter=0.0, vmax=COLORLIMS[1])
+
+    # ── Surfaces — back-to-front order (m=1 first, m=8 last) ─────────────────
+    all_W: list[np.ndarray] = []
+    for m in [1, 2, 4, 8]:
+        X, Y, W = wigner_data[m]
+        _, y_offset, xy_scale, alpha_opacity = SURFACE_PARAMS[m]
+        all_W.append(W)
+        ax.plot_surface(
+            X * xy_scale,
+            Y * xy_scale + y_offset,
+            W,
+            rstride=2, cstride=2,
+            facecolors=cmap(norm(W)),
+            linewidth=0,
+            antialiased=True,
+            shade=False,   # shade=True is incompatible with facecolors
+            alpha=alpha_opacity,
+        )
+
+    # ── Z limits ──────────────────────────────────────────────────────────────
+    z_min = min(W.min() for W in all_W)
+    z_max = max(W.max() for W in all_W)
+    ax.set_zlim(z_min * 1.1, z_max * 1.5)
+
+    # ── Save ──────────────────────────────────────────────────────────────────
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    dpi = 150 if output_path.suffix == '.png' else 300
+    fig.savefig(output_path, dpi=dpi, facecolor=BG_COLOR)
+    plt.close(fig)
+    print(f"Saved: {output_path.resolve()}")
+
+
+if __name__ == "__main__":
+    make_cover()
