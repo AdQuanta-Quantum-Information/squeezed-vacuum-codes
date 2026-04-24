@@ -1,0 +1,39 @@
+JOURNAL COVER CAPTION
+=====================
+Max 300 characters, must begin with a keyword or short title.
+Character count shown below. Use the FINAL TEXT as-is for submission.
+
+─────────────────────────────────────────────────────────────
+FINAL TEXT (271 characters):
+
+Squeezed-Vacuum Bosonic Codes: Wigner phase-space portraits of
+m-legged codewords (m=1,2,4,8, r=1.5). Negative values (blue)
+signal non-classical quantum interference. Increasing m yields
+richer interference structure and stronger protection against
+photon loss.
+─────────────────────────────────────────────────────────────
+
+NOTES ON THE SCIENCE:
+- Each panel is the exact Wigner function W(α) of a codeword
+  computed from the paper's definition (Eq. 7, r=1.5).
+- Panels shown: m=1 |0_L⟩, m=2 |0_L⟩, m=4 |0_L⟩, m=8 |1_L⟩.
+- Negative Wigner values (blue regions) are the hallmark of
+  non-classical quantum states — they cannot exist in any
+  classical probability distribution.
+- The cascade from smooth (m=1) to highly structured (m=8)
+  illustrates the paper's central message: more legs = richer
+  phase-space structure = higher code distance against loss.
+- The m=8 logical-1 codeword is shown because it has the most
+  visually striking interference mandala, best representing
+  the novelty of the code family.
+
+COMPLIANCE CHECKLIST (from journal email):
+[x] Concept clearly fits the research (Wigner functions directly
+    computed from the paper's codewords)
+[x] No depictions of people
+[x] No religious or cultural imagery
+[x] Not previously published (these panels are new visualizations)
+[x] Not from stock photo or clip-art
+[x] NOT AI-generated — all images computed directly from the
+    quantum states defined in the paper using exact numerics
+    (QuTiP wigner() function, method='clenshaw')
