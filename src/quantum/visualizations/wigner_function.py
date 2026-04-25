@@ -63,6 +63,37 @@ class WignerOutput(TypedDict):
     cb  : Colorbar
 
 
+def compute_wigner_values(
+    state: np.ndarray | qutip.Qobj,
+    alpha_max: float,
+    num_points: int = 250,
+    method: str = "clenshaw",
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Compute Wigner values on a square phase-space grid.
+
+    Returns:
+        tuple[np.ndarray, np.ndarray, np.ndarray]:
+            - Wigner matrix W
+            - x-axis vector xvec
+            - y-axis vector yvec
+    """
+    if isinstance(state, np.ndarray):
+        rho = qutip.Qobj(state)
+    elif isinstance(state, qutip.Qobj):
+        rho = state
+    else:
+        raise TypeError(f"Invalid state type: {type(state)!r}")
+
+    if qutip.isket(rho):
+        rho = qutip.ket2dm(rho)
+
+    xvec = np.linspace(-alpha_max, alpha_max, num_points)
+    W0 = qutip.wigner(rho, xvec, xvec, method=method)
+    W, yvec = W0 if isinstance(W0, tuple) else (W0, xvec)
+
+    return np.asarray(W), np.asarray(xvec), np.asarray(yvec)
+
+
 def _plot_wigner(
     rho, fig:Figure, ax:Axes,
     cmap=None, alpha_max=7.5, colorbar=False,
@@ -81,13 +112,12 @@ def _plot_wigner(
     qutip are the authors of this function.
     """
 
-    if qutip.isket(rho):
-        rho = qutip.ket2dm(rho)
-
-    xvec = np.linspace(-alpha_max, alpha_max, num_points)
-    W0 = qutip.wigner(rho, xvec, xvec, method=method)
-
-    W, yvec = W0 if isinstance(W0, tuple) else (W0, xvec)
+    W, xvec, yvec = compute_wigner_values(
+        state=rho,
+        alpha_max=alpha_max,
+        num_points=num_points,
+        method=method,
+    )
 
     ## Color limits:
     if colorlims is None:
