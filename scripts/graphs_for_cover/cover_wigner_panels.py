@@ -7,6 +7,8 @@ if __name__ == "__main__":
     from __init__ import add_root_to_path
     add_root_to_path()
 
+from typing import Final
+
 import numpy as np
 import matplotlib
 import matplotlib.cm
@@ -20,14 +22,16 @@ from src.utils.prints import ProgressBar
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 STRENGTH    = 1.5
-NUM_MOMENTS = 300
+NUM_MOMENTS = 500
 CODE_TYPE   = "squeeze"
 COLORLIMS    = (-0.20, 0.23)
 ALPHA_GAMMA  = 0.6   # <1 makes faint structure more visible (softer falloff to zero)
 
 # Fixed Wigner grid resolution requested by user.
-WIGNER_POINTS = 2000
-OUTPUT_PX     = 2000   # Final image size in pixels (square)
+WIGNER_POINTS = 4000
+OUTPUT_PX     = 4000   # Final image size in pixels (square)
+
+DPI : Final[int] = 600  # Dots per inch for PNG/TIFF metadata; does not affect actual pixel dimensions.
 
 # Extend phase-space range beyond the state's natural scale so no features
 # are clipped at the canvas boundary.  1.0 = no extension.
@@ -97,12 +101,14 @@ def main(alpha_extend: float = ALPHA_EXTEND) -> None:
         img, W, xvec, yvec = _compute_and_render(m, alpha_extend=alpha_extend)
         out_base = OUTPUT_DIR / f"wigner_{label}"
 
-        png_path = out_base.with_suffix(".png")
-        tiff_path = out_base.with_suffix(".tiff")
-        npz_path = out_base.with_suffix(".npz")
+        image_formats = {
+            ".png":  {"dpi": (DPI, DPI)},
+            ".tiff": {"dpi": (DPI, DPI), "compression": "tiff_lzw"},
+        }
+        for suffix, kwargs in image_formats.items():
+            img.save(out_base.with_suffix(suffix), **kwargs)
 
-        img.save(png_path, dpi=(300, 300))
-        img.save(tiff_path, dpi=(300, 300), compression="tiff_lzw")
+        npz_path = out_base.with_suffix(".npz")
         np.savez_compressed(
             npz_path,
             W=W,
@@ -112,10 +118,8 @@ def main(alpha_extend: float = ALPHA_EXTEND) -> None:
             wigner_points=np.array(WIGNER_POINTS, dtype=np.int64),
         )
 
-        print(
-            f"  Saved: {png_path.name}, {tiff_path.name}, {npz_path.name} "
-            f"({img.width}×{img.height} px image)\n"
-        )
+        saved_names = ", ".join(out_base.with_suffix(s).name for s in [*image_formats, ".npz"])
+        print(f"  Saved: {saved_names} ({img.width}×{img.height} px image)\n")
 
     print("All 4 panels saved.")
 
