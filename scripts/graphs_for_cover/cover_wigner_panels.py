@@ -91,12 +91,15 @@ def _compute_and_render(
     return img, W, xvec, yvec
 
 
-def main(alpha_extend: float = ALPHA_EXTEND) -> None:
+def main(
+    alpha_extend: float = ALPHA_EXTEND,
+    m_values: list[int] = [4, 8],
+) -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     print(f"Output directory: {OUTPUT_DIR.resolve()}")
     print(f"Phase-space range extension: {alpha_extend}×\n")
 
-    for m in ProgressBar([1, 2, 4, 8], prefix="panels: "):
+    for m in ProgressBar(m_values, prefix="panels: "):
         _, _, _, label = STATES[m]
         img, W, xvec, yvec = _compute_and_render(m, alpha_extend=alpha_extend)
         out_base = OUTPUT_DIR / f"wigner_{label}"
