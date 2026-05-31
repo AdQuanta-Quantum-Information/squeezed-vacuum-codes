@@ -70,4 +70,4 @@ if __name__ == "__main__":
     test_inverse_lookup_from_callable_decreasing()
     test_inverse_lookup_out_of_range_without_clamp()
     test_inverse_lookup_expands_until_bracket_found()
-    print("All inverse_lookup tests passed")
+    print("\n🎉All inverse_lookup tests passed")

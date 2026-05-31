@@ -26,7 +26,9 @@ def _sqrt_factorial_large_n(n):
     log_sqrt_factorial = log_factorial / 2
     
     # Exponentiate to get the square root of the factorial
-    sqrt_factorial = np.exp(log_sqrt_factorial)
+    # Overflow to inf is intentional for very large n, suppress the RuntimeWarning
+    with np.errstate(over='ignore'):
+        sqrt_factorial = np.exp(log_sqrt_factorial)
     
     return sqrt_factorial
 

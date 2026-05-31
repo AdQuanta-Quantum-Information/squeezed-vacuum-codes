@@ -32,8 +32,7 @@ def test_kraus_completeness():
     # Check if this is acceptable (should be O(gamma^3))
     print(f'Expected O(gamma^3) = {gamma**3:.2e}')
     print(f'Ratio: {max_diff / gamma**3:.2f}')
-    
-    return max_diff
+
 
 def analyze_k0_structure():
     """Analyze the structure of K0 operator."""
