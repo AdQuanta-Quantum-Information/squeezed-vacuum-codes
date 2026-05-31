@@ -117,10 +117,8 @@ def _common_a_lk_factor(n:int) -> sp.Expr:
 def _analytic_mean_photon_number_for_squeezed_k_state(m:int, k:int, L_threshold:Literal[False]|int=False) -> sp.Expr:
     l_symbol = sp.symbols('l', integer=True)
 
-    k_star = (-k) % m
-    
     # Define n in terms of l
-    n_expr = l_symbol * m + k_star
+    n_expr = l_symbol * m + k
     a_kl_expr = _common_a_lk_factor(n_expr)
     
     # Create symbolic sums
@@ -291,7 +289,6 @@ def _numerical_exact_summation_mean_photon_number_for_squeezed_codeword(m:int, r
     assert m > 0
     assert 0 <= k < m
 
-    k_star = (-k) % m
     res_tol = DEFAULT_TOL * 1e-3  # Be even more strict than the search tolerance
   
 
@@ -315,7 +312,7 @@ def _numerical_exact_summation_mean_photon_number_for_squeezed_codeword(m:int, r
 
     for l in ProgressBar.range(L_cut_off + 1, prefix="l values: ", print_length=100):
         ProgressBar.newest().append_extra_str(f" diff={diff}")
-        n = l * m + k_star
+        n = l * m + k
         n = int(n)
         a_kl = factorial(2*n) / (
             (4**n) * (factorial(n)**2)

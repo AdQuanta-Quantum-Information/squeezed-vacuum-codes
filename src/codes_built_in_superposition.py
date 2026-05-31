@@ -113,9 +113,9 @@ def simple_m_legged_state(
 
         ## phase and rotation per leg:
         phase = (2*π*j/m) * k  
-        phasor = exp(1j*phase)
+        phasor = exp(-1j*phase)
         if not Globals.PRECISE:
-            phasor = force_near_pure_complex(phasor, threshold=1e-15)  # e^{i2πjk/m}
+            phasor = force_near_pure_complex(phasor, threshold=1e-15)  # e^{-i2πjk/m}
         
         θj = 2*π*j/m   # rotation angle for this leg
     

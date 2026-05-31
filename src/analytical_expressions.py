@@ -106,9 +106,8 @@ def _get_max_fox_number(fock_state: sp.Expr) -> int:
 
 def get_normalization_factor(m:int, r:float, k:int, num_moments:int) -> sp.Expr:
     sum_ : sp.Expr = 0
-    k_star = _get_first_nonnegative_k_mod_m(k, m)
     for l in ProgressBar.range(num_moments//m):
-        n = l*m + k_star
+        n = l*m + k
         term_ : sp.Expr = ( 
             sp.factorial(2*n) 
         ) / ( 
@@ -132,11 +131,6 @@ def compute_fock_state_norm(state: sp.Expr) -> float:
     return float(norm_.evalf())
 
 
-def _get_first_nonnegative_k_mod_m(k:int, m:int) -> int:
-    k_star = (-k) % m
-    return k_star
-
-
 def squeezed_superposition_state(
     m_val:int,  # number of legs
     r_val:float,  # squeezing magnitude
@@ -149,10 +143,9 @@ def squeezed_superposition_state(
     equal_sums = []
     
     ## Formula 1: Analytical fock representation from paper:
-    k_star = _get_first_nonnegative_k_mod_m(k_val, m_val)
     sum1_ : sp.Expr = 0 
     for l in ProgressBar.range(num_moments):
-        n_val = l*m_val + k_star
+        n_val = l*m_val + k_val
         coeff = squeezed_superposition_term.subs({m: m_val, r: r_val, n: n_val})
         fock_2n = coeff * Ket(2*n_val)
         sum1_ += fock_2n
@@ -164,7 +157,7 @@ def squeezed_superposition_state(
         sum2_ : sp.Expr = 0
         for j in ProgressBar.range(m_val):
             ProgressBar.newest().append_extra_str(f"leg j={j+1}")
-            leg_phase = sp.exp(i * 2 * π * j * k_val/ m_val)
+            leg_phase = sp.exp(-i * 2 * π * j * k_val/ m_val)
             θ = π * j / m_val
             leg = fock_rep_of_squeezed_vacuum_in_direction(num_moments, r_val, θ)
             sum2_ += leg * leg_phase
