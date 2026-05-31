@@ -230,7 +230,7 @@ def _check_qutip_and_analytical_states_are_equal(analytical:sp.Expr, qutip_state
     # Get max fock number:
     max_fock_analytical = _get_max_fox_number(analytical)
     max_fock_qutip = qutip_state.shape[0] - 1
-    max_fock = min(max_fock_analytical, max_fock_qutip)
+    max_fock = int(min(max_fock_analytical, max_fock_qutip))
 
     # qutip data vector
     qutip_data = qutip_state.full()

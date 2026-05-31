@@ -153,7 +153,7 @@ def _analytic_mean_photon_number_for_cat_k_state(m:int, k:int) -> sp.Expr:
     def sum_expression(k_:int) -> sp.Sum:
         return sp.Sum(ω**(k_*d_symbol)*exponent, (d_symbol, 0, m-1))  #type: ignore
     
-    return abs_alpha_square * sum_expression(k+1) / sum_expression(k)
+    return abs_alpha_square * sum_expression(1-k) / sum_expression(-k)
 
 
 def _solve_equation_with_optimization_tools(
@@ -229,9 +229,11 @@ def _numerical_exact_summation_mean_photon_number_for_cat_codeword(m:int, alpha:
     sector k and displacement alpha.
 
     ``alpha`` (may be real or complex). The function computes
-    abs(alpha)**2 * S_{k+1} / S_k where
+    abs(alpha)**2 * S_{1-k} / S_{-k} where
     S_j = sum_{d=0}^{m-1} omega^{j*d} * exp(-|alpha|^2*(1-omega^d))
     and omega = exp(i*2*pi/m).
+
+    (Derived for the e^{-i2πjk/m} phase convention used in simple_m_legged_state.)
     """
     # Basic checks
     assert m > 0
@@ -250,8 +252,8 @@ def _numerical_exact_summation_mean_photon_number_for_cat_codeword(m:int, alpha:
         # exponent may be complex because of omega_d; use numpy complex exp
         exponent = np.exp(-abs_alpha_square * (1.0 - omega_d))
 
-        numerator += (omega**((k + 1) * d)) * exponent
-        denominator += (omega**(k * d)) * exponent
+        numerator += (omega**((1 - k) * d)) * exponent
+        denominator += (omega**((-k) * d)) * exponent
 
     # Multiply by |alpha|^2 as in analytic expression
     result = abs_alpha_square * numerator

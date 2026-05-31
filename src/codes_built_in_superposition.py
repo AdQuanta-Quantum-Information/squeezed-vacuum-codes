@@ -58,9 +58,12 @@ def simple_m_legged_state(
     For example:
     L-legged Cat code is..
         |0_L⟩ ∝ Σ_{j=0}^{m-1} |α e^{i2πj/m}⟩
-        |1_L⟩ ∝ Σ_{j=0}^{m-1} e^{i2πj/m} |α e^{i2πj/m}⟩
+        |1_L⟩ ∝ Σ_{j=0}^{m-1} e^{-i2πj/m} |α e^{i2πj/m}⟩
         ...
-        |L_L⟩ ∝ Σ_{j=0}^{m-1} e^{i2πjL/m} |α e^{i2πj/m}⟩
+        |L_L⟩ ∝ Σ_{j=0}^{m-1} e^{-i2πjL/m} |α e^{i2πj/m}⟩
+
+    L-legged Squeezed code (Eq. 6 of paper) is..
+        |k_L⟩ ∝ Σ_{j=0}^{m-1} e^{-i2πjk/m} S(r, πj/m) |vacuum⟩
     
     Parameters:
     -----------
